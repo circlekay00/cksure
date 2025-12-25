@@ -1,23 +1,61 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
-  ClipboardCheck, LayoutDashboard, LogIn, LogOut, Loader2, Trash2,
-  Eye, CircleDot, Download, Camera, User as UserIcon, Clock, 
-  CheckCircle2, ShieldCheck, BarChart3, QrCode, X, PlusCircle, Settings, 
-  Trash, Layers, TrendingUp, AlertTriangle, ChevronRight, FileText
+  ClipboardCheck,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
+  Loader2,
+  Trash2,
+  Clock,
+  ListChecks,
+  Eye,
+  X,
+  Plus,
+  Users,
+  QrCode,
+  CircleDot,
+  Type,
+  Filter,
+  CheckCircle2,
+  Download,
+  TrendingUp,
+  AlertTriangle,
+  Award,
+  Search,
+  Mail,
+  ChevronDown,
+  Lock,
+  ChevronUp,
+  GripVertical,
+  Copy,
+  Store,
+  Calendar,
+  User as UserIcon,
+  FileBarChart
 } from "lucide-react";
 
 import { initializeApp } from "firebase/app";
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
 import {
-  getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot,
-  serverTimestamp, getDoc, setDoc, query, orderBy, where, updateDoc
+  getFirestore,
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  getDoc,
+  updateDoc,
+  query,
+  orderBy
 } from "firebase/firestore";
-
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 
 /* ================= FIREBASE CONFIG ================= */
 const firebaseConfig = {
@@ -27,6 +65,7 @@ const firebaseConfig = {
   storageBucket: "ecosure.firebasestorage.app",
   messagingSenderId: "847577390936",
   appId: "1:847577390936:web:d8a00ef67ef21ce98a8f2d",
+  measurementId: "G-M82TFF67PJ"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -37,511 +76,855 @@ const db = getFirestore(app);
 const CustomStyles = () => (
   <style>{`
     @import url("https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap");
+
     :root {
-      --bg: #0b0e14; --card: #151921; --accent: #4cc9f0; --orange: #ff9f1c;
-      --text: #e0e1dd; --muted: #778da9; --success: #00ff9c; --danger: #ff4d4f; --warning: #ffbe0b;
-      --border: rgba(255,255,255,0.08);
+      --bg: #0d1b2a;
+      --card: #1b263b;
+      --accent-cyan: #4cc9f0;
+      --accent-orange: #ff9f1c;
+      --text-primary: #e0e1dd;
+      --text-secondary: #778da9;
+      --success: #00ff9c;
+      --danger: #ff4d4f;
+      --warning: #ffd166;
     }
-    * { box-sizing: border-box; transition: 0.25s ease; }
-    body { margin: 0; font-family: "Josefin Sans", sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; }
-    .container { max-width: 1250px; margin: 0 auto; padding: 20px; min-height: 100vh; }
-    
-    .header { display: flex; justify-content: space-between; align-items: center; background: var(--card); padding: 15px 30px; border-radius: 20px; margin-bottom: 30px; border: 1px solid var(--border); position: sticky; top: 15px; z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-    
-    .btn { padding: 12px 22px; border-radius: 12px; border: none; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 700; font-family: inherit; font-size: 0.85rem; }
-    .btn-primary { background: var(--accent); color: #000; }
-    .btn-ghost { background: rgba(255,255,255,0.04); color: white; border: 1px solid transparent; }
-    .btn-ghost:hover { background: rgba(255,255,255,0.08); border-color: var(--accent); }
-    .btn-active { background: var(--accent); color: #000; }
-    .btn-danger { background: rgba(255, 77, 79, 0.1); color: var(--danger); border: 1px solid var(--danger); }
-    
-    .card { background: var(--card); padding: 25px; border-radius: 24px; border: 1px solid var(--border); margin-bottom: 25px; position: relative; overflow: hidden; }
-    .input { width: 100%; padding: 15px; border-radius: 12px; border: 1px solid var(--border); background: #000; color: white; margin-bottom: 15px; outline: none; font-family: inherit; }
-    .input:focus { border-color: var(--accent); box-shadow: 0 0 10px rgba(76, 201, 240, 0.2); }
-    
-    .status-yes { background: var(--success) !important; color: #000 !important; font-weight: 800; }
-    .status-no { background: var(--danger) !important; color: #fff !important; font-weight: 800; }
-    .status-na { background: var(--warning) !important; color: #000 !important; font-weight: 800; }
-    
-    .tab-bar { display: flex; gap: 15px; border-bottom: 1px solid var(--border); margin-bottom: 30px; overflow-x: auto; padding-bottom: 5px; }
-    .tab-item { padding: 12px 20px; cursor: pointer; color: var(--muted); font-weight: 700; white-space: nowrap; border-radius: 10px 10px 0 0; }
-    .tab-item.active { color: var(--accent); background: rgba(76, 201, 240, 0.05); border-bottom: 3px solid var(--accent); }
 
-    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); backdrop-filter: blur(10px); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .modal-content { background: var(--card); width: 100%; max-width: 800px; border-radius: 28px; padding: 35px; max-height: 85vh; overflow-y: auto; border: 1px solid var(--border); box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
-    
-    .stat-card { text-align: center; padding: 25px; border-radius: 20px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); }
-    .stat-val { font-size: 2.2rem; font-weight: 800; margin: 10px 0; color: var(--accent); }
-    
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; padding: 15px; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
-    td { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    * { box-sizing: border-box; }
 
-    .qr-container { background: #fff; padding: 20px; border-radius: 20px; display: inline-block; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
-    .progress-dots { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
-    .dot.active { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+    body {
+      margin: 0;
+      font-family: "Josefin Sans", sans-serif;
+      background-color: var(--bg);
+      color: var(--text-primary);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
 
-    .inline-msg { padding: 12px; border-radius: 12px; margin-bottom: 15px; font-weight: 600; font-size: 0.9rem; text-align: center; border: 1px solid transparent; }
-    .msg-success { background: rgba(0, 255, 156, 0.1); color: var(--success); border-color: rgba(0, 255, 156, 0.2); }
-    .msg-error { background: rgba(255, 77, 79, 0.1); color: var(--danger); border-color: rgba(255, 77, 79, 0.2); }
+    .app-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 16px;
+      flex: 1;
+      width: 100%;
+    }
+
+    .header {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 24px;
+      background: rgba(27, 38, 59, 0.85);
+      backdrop-filter: blur(12px);
+      padding: 18px 22px;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: sticky;
+      top: 16px;
+      z-index: 100;
+    }
+
+    .brand {
+      font-size: 1.75rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand .store { color: var(--accent-orange); }
+    .brand .checklist { color: var(--accent-cyan); }
+
+    .nav-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .nav-btn {
+      padding: 10px 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(65, 90, 119, 0.35);
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .nav-btn.active { background: var(--accent-cyan); color: var(--bg); }
+    .nav-btn.primary { background: var(--accent-cyan); color: var(--bg); }
+    .nav-btn.success { background: var(--success); color: var(--bg); }
+    .nav-btn.danger { background: var(--danger); color: white; }
+    .nav-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .card {
+      background: var(--card);
+      padding: 24px;
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.05);
+      margin-bottom: 24px;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: rgba(13, 27, 42, 0.4);
+      padding: 20px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .stat-value { font-size: 2rem; font-weight: 700; color: var(--accent-cyan); }
+    .stat-label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
+
+    .input-label { font-size: 0.85rem; color: var(--accent-cyan); margin-bottom: 8px; font-weight: 600; display: block; }
+
+    .input-field {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 2px solid rgba(255,255,255,0.1);
+      background: rgba(13, 27, 42, 0.55);
+      color: white;
+      outline: none;
+      font-family: inherit;
+    }
+    
+    .input-field:focus { border-color: var(--accent-cyan); }
+    .input-field:disabled { background: rgba(0,0,0,0.3); opacity: 0.7; cursor: not-allowed; }
+
+    .opt-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 12px;
+      background: var(--bg);
+      border: 2px solid transparent;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .opt-btn.active-yes { background: var(--success); color: var(--bg); }
+    .opt-btn.active-selected { background: var(--success); color: var(--bg); }
+    .opt-btn.active-no { background: var(--danger); color: white; }
+    .opt-btn.active-na { background: var(--accent-cyan); color: var(--bg); }
+
+    .tab-bar {
+      display: flex;
+      gap: 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 24px;
+    }
+
+    .tab-item {
+      padding: 12px 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-weight: 600;
+      position: relative;
+    }
+
+    .tab-item.active { color: var(--accent-cyan); }
+    .tab-item.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent-cyan);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-content {
+      background: var(--card);
+      width: 100%;
+      max-width: 800px;
+      max-height: 90vh;
+      border-radius: 32px;
+      padding: 32px;
+      overflow-y: auto;
+      border: 1px solid rgba(255,255,255,0.1);
+      position: relative;
+    }
+
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .toast {
+      background: var(--success);
+      color: var(--bg);
+      padding: 16px 24px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .toast.error { background: var(--danger); color: white; }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .report-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .report-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 20px;
+      transition: all 0.2s;
+    }
+
+    .report-card:hover { transform: translateY(-4px); border-color: var(--accent-cyan); background: rgba(255,255,255,0.05); }
+
+    .qr-box {
+      background: white;
+      padding: 12px;
+      border-radius: 12px;
+      width: 152px;
+      height: 152px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .w-full { width: 100%; }
+    .cursor-pointer { cursor: pointer; }
+    
+    .validation-error {
+      color: var(--danger);
+      font-size: 0.75rem;
+      margin-top: 4px;
+      font-weight: 600;
+    }
+
+    .question-editor-item {
+        background: rgba(0,0,0,0.2);
+        margin-bottom: 12px;
+        border-radius: 16px;
+        padding: 16px;
+        border: 1px solid rgba(255,255,255,0.05);
+    }
   `}</style>
 );
 
-export default function EcoSurePro() {
+export default function App() {
   const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [adminData, setAdminData] = useState(null);
   const [view, setView] = useState("form");
-  const [activeTab, setActiveTab] = useState("reports");
+  const [activeTab, setActiveTab] = useState("analytics");
   const [loading, setLoading] = useState(true);
-  
-  // Inline Message State
-  const [status, setStatus] = useState({ msg: "", type: "" });
 
-  // Data States
+  // Notifications
+  const [toast, setToast] = useState(null);
+
+  // Data
   const [questions, setQuestions] = useState([]);
   const [reports, setReports] = useState([]);
-  const [usersList, setUsersList] = useState([]);
+  const [admins, setAdmins] = useState([]);
   
-  // Form States
-  const [audit, setAudit] = useState({ name: "", store: "", answers: {}, photos: {} });
-  const [step, setStep] = useState(0);
+  // Pagination State
+  const [itemsToShow, setItemsToShow] = useState(12);
+  const PAGE_SIZE = 12;
+  
+  // UI Logic
   const [selectedReport, setSelectedReport] = useState(null);
+  const [searchStore, setSearchStore] = useState("");
+  const [isStoreLocked, setIsStoreLocked] = useState(false);
+  
+  // Forms
+  const [auditForm, setAuditForm] = useState({ name: "", store: "", notes: "", answers: {} });
+  const [newQ, setNewQ] = useState({ text: "", type: "yesno", options: "" });
+  const [newAdmin, setNewAdmin] = useState({ email: "", pass: "", role: "viewer", store: "" });
+  const [qrStore, setQrStore] = useState("");
+  const qrRef = useRef(null);
+
+  // Auth Inputs
   const [loginForm, setLoginForm] = useState({ email: "", pass: "" });
 
-  // Admin Tool States
-  const [newQ, setNewQ] = useState({ text: "", section: "", type: "Yes/No/NA", options: "" });
-  const [newUser, setNewUser] = useState({ email: "", pass: "", store: "" });
-  const [qrId, setQrId] = useState("");
-
-  /* --- AUTO-CLEAR MESSAGES --- */
-  useEffect(() => {
-    if (status.msg) {
-      const timer = setTimeout(() => setStatus({ msg: "", type: "" }), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [status]);
-
-  /* --- INLINE MESSAGE COMPONENT --- */
-  const StatusBox = () => {
-    if (!status.msg) return null;
-    return (
-      <div className={`inline-msg ${status.type === 'error' ? 'msg-error' : 'msg-success'}`}>
-        {status.msg}
-      </div>
-    );
+  /* ================= UTILS ================= */
+  const showMessage = (msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
   };
 
-  /* --- AUTH & INITIALIZATION --- */
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const storeFromUrl = params.get('store');
-    if (storeFromUrl) setAudit(prev => ({ ...prev, store: storeFromUrl }));
+  const loadScript = (src) => new Promise(res => {
+    if (document.querySelector(`script[src="${src}"]`)) return res();
+    const s = document.createElement("script"); s.src = src; s.onload = res; document.body.appendChild(s);
+  });
 
-    return onAuthStateChanged(auth, async (u) => {
+  const formatDateTime = (ts) => {
+    if (!ts) return "Processing...";
+    return ts.toDate().toLocaleString('en-US', { 
+        month: 'short', day: 'numeric', year: 'numeric', 
+        hour: '2-digit', minute: '2-digit' 
+    });
+  };
+
+  /* ================= INIT & SEARCH PARAMS ================= */
+  useEffect(() => {
+    const init = async () => {
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js");
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js");
+      
+      const params = new URLSearchParams(window.location.search);
+      const storeParam = params.get('store');
+      if (storeParam) {
+        setAuditForm(prev => ({ ...prev, store: storeParam }));
+        setIsStoreLocked(true);
+        showMessage(`Direct Audit for Store #${storeParam}`);
+      }
+    };
+    init();
+
+    return onAuthStateChanged(auth, async u => {
       if (u) {
         setUser(u);
         const snap = await getDoc(doc(db, "admins", u.uid));
-        if (snap.exists()) setProfile(snap.data());
+        if (snap.exists()) setAdminData(snap.data());
       } else {
-        setUser(null); setProfile(null); setView("form");
+        setUser(null);
+        setAdminData(null);
       }
       setLoading(false);
     });
   }, []);
 
-  /* --- REAL-TIME DATA SYNC --- */
   useEffect(() => {
-    onSnapshot(query(collection(db, "checklist_questions"), orderBy("section", "asc")), s => 
-      setQuestions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    onSnapshot(collection(db, "admins"), s => 
-      setUsersList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const qUnsub = onSnapshot(query(collection(db, "checklist_questions"), orderBy("order", "asc")), snap => {
+      setQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => qUnsub();
   }, []);
 
   useEffect(() => {
-    if (!user || !profile) return;
-    let qR;
-    const isSuper = profile.role === "super" || profile.assignedStore === "All";
-    if (isSuper) {
-      qR = query(collection(db, "store_checklists"), orderBy("createdAt", "desc"));
-    } else {
-      qR = query(collection(db, "store_checklists"), where("store", "==", profile.assignedStore), orderBy("createdAt", "desc"));
-    }
-    const unsubscribe = onSnapshot(qR, (snapshot) => {
-      setReports(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (err) => {
-      setStatus({ msg: "Fetch Error: Check Indexing", type: "error" });
+    if (!user) return;
+    const rUnsub = onSnapshot(query(collection(db, "store_checklists"), orderBy("createdAt", "desc")), snap => {
+      setReports(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    return () => unsubscribe();
-  }, [user, profile]);
-
-  /* --- ANALYTICS CALCULATIONS --- */
-  const stats = useMemo(() => {
-    if (reports.length === 0) return { total: 0, compliance: 0, violations: 0 };
-    const total = reports.length;
-    let totalNo = 0;
-    reports.forEach(r => {
-      totalNo += Object.values(r.answers).filter(v => v === "No").length;
+    const aUnsub = onSnapshot(collection(db, "admins"), snap => {
+      setAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    const passing = reports.filter(r => !Object.values(r.answers).includes("No")).length;
-    return { total, compliance: Math.round((passing / total) * 100), violations: totalNo };
-  }, [reports]);
+    return () => { rUnsub(); aUnsub(); };
+  }, [user]);
 
-  /* --- SECTION MAPPING --- */
-  const sections = useMemo(() => {
-    const groups = questions.reduce((acc, q) => {
-      const s = q.section || "General Ops";
-      if (!acc[s]) acc[s] = [];
-      acc[s].push(q);
-      return acc;
-    }, {});
-    return Object.entries(groups);
-  }, [questions]);
+  /* ================= ANALYTICS ================= */
+  const analytics = useMemo(() => {
+    const filtered = reports.filter(r => {
+        // Filter by search bar
+        const matchesSearch = r.store.toLowerCase().includes(searchStore.toLowerCase()) || r.name.toLowerCase().includes(searchStore.toLowerCase());
+        // Filter by role restriction
+        if (adminData?.role === 'manager') return matchesSearch && r.store === adminData.assignedStore;
+        return matchesSearch;
+    });
 
-  /* --- PDF GENERATOR --- */
-  const generatePDF = async (r) => {
-    try {
-      const docP = new jsPDF();
-      docP.setFillColor(21, 25, 33); 
-      docP.rect(0, 0, 210, 50, 'F');
-      docP.setTextColor(76, 201, 240); 
-      docP.setFontSize(24); 
-      docP.text("CKSURE AUDIT", 15, 25);
-      docP.setTextColor(255, 255, 255); 
-      docP.setFontSize(10);
-      docP.text(`STORE NUMBER: ${r.store}`, 15, 35);
-      docP.text(`INSPECTOR NAME: ${r.name}`, 15, 41);
-      const timestamp = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString() : new Date().toLocaleString();
-      docP.text(`DATE & TIME: ${timestamp}`, 15, 47);
-      const tableData = Object.entries(r.answers).map(([q, a]) => [q, a]);
-      autoTable(docP, {
-        startY: 60,
-        head: [['Question Detail', 'Status']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: { fillColor: [76, 201, 240], textColor: 0 },
-        styles: { font: "helvetica", fontSize: 9, cellPadding: 3 },
+    let totalScore = 0;
+    let totalQuestions = 0;
+    let issuesFound = 0;
+
+    filtered.forEach(r => {
+      Object.values(r.answers).forEach(a => {
+        if (a === "Yes") { totalScore++; totalQuestions++; }
+        else if (a === "No") { totalQuestions++; issuesFound++; }
       });
-      if (r.photos && Object.keys(r.photos).length > 0) {
-        docP.addPage();
-        docP.setTextColor(0, 0, 0);
-        docP.setFontSize(14);
-        docP.text("EVIDENCE & VIOLATION PHOTOS", 15, 20);
-        let yPos = 30;
-        Object.entries(r.photos).forEach(([q, imgData]) => {
-          if (yPos > 240) { docP.addPage(); yPos = 20; }
-          docP.setFontSize(8);
-          docP.text(`Section: ${q}`, 15, yPos);
-          docP.addImage(imgData, 'JPEG', 15, yPos + 5, 50, 40);
-          yPos += 55;
-        });
-      }
-      docP.save(`CKSure_Store_${r.store}.pdf`);
-    } catch (err) {
-      setStatus({ msg: "PDF Error: Check Console", type: "error" });
+    });
+
+    const compliance = totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0;
+    const paginatedList = filtered.slice(0, itemsToShow);
+    const hasMore = itemsToShow < filtered.length;
+
+    return { total: filtered.length, compliance, issues: issuesFound, list: paginatedList, hasMore };
+  }, [reports, searchStore, itemsToShow, adminData]);
+
+  /* ================= HANDLERS ================= */
+  const validateStore = (s) => /^\d+$/.test(s) && s.length >= 4;
+
+  const handleAuditSubmit = async () => {
+    if (!auditForm.name) return showMessage("Inspector Name is required", "error");
+    if (!validateStore(auditForm.store)) return showMessage("Valid Store number required", "error");
+    
+    const unansweredCount = questions.length - Object.keys(auditForm.answers).length;
+    if (unansweredCount > 0) return showMessage(`Please answer all ${questions.length} questions.`, "error");
+
+    try {
+      await addDoc(collection(db, "store_checklists"), {
+        ...auditForm,
+        yesCount: Object.values(auditForm.answers).filter(v => v === 'Yes').length,
+        totalQuestions: questions.length,
+        createdAt: serverTimestamp()
+      });
+      showMessage("Audit logged successfully!");
+      setAuditForm(prev => ({ name: "", store: isStoreLocked ? prev.store : "", notes: "", answers: {} }));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) { showMessage(e.message, "error"); }
+  };
+
+  const handleLogin = async () => {
+    try {
+      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.pass);
+      setView("admin");
+      showMessage("Access granted");
+    } catch (e) { showMessage(e.message, "error"); }
+  };
+
+  const createAdmin = async () => {
+    if (!newAdmin.email || !newAdmin.pass) return showMessage("Email and Password required", "error");
+    try {
+      const res = await createUserWithEmailAndPassword(auth, newAdmin.email, newAdmin.pass);
+      await setDoc(doc(db, "admins", res.user.uid), {
+        email: newAdmin.email, 
+        role: newAdmin.role, 
+        uid: res.user.uid,
+        assignedStore: newAdmin.store || ""
+      });
+      setNewAdmin({ email: "", pass: "", role: "viewer", store: "" });
+      showMessage("New admin account created");
+    } catch (e) { showMessage(e.message, "error"); }
+  };
+
+  const generateQR = () => {
+    if (!validateStore(qrStore)) return showMessage("Enter a valid Store # for QR", "error");
+    const link = `${window.location.origin}${window.location.pathname}?store=${qrStore}`;
+    if (qrRef.current) {
+      qrRef.current.innerHTML = "";
+      new window.QRCode(qrRef.current, { text: link, width: 128, height: 128 });
     }
   };
 
-  if (loading) return <div style={{height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#000'}}><Loader2 className="animate-spin" color="#4cc9f0" size={50}/></div>;
+  const exportPDF = async (rep) => {
+    if (!window.jspdf) return;
+    const { jsPDF } = window.jspdf;
+    const docP = new jsPDF();
+    
+    // Header
+    docP.setFillColor(27, 38, 59);
+    docP.rect(0, 0, 210, 40, 'F');
+    docP.setTextColor(255, 159, 28);
+    docP.setFontSize(22);
+    docP.text("CKSURE AUDIT", 15, 25);
+    
+    // Summary
+    docP.setTextColor(0, 0, 0);
+    docP.setFontSize(10);
+    docP.text(`Store: #${rep.store}`, 15, 50);
+    docP.text(`Inspector: ${rep.name}`, 15, 56);
+    docP.text(`Date: ${rep.createdAt?.toDate().toLocaleString() || 'N/A'}`, 15, 62);
+    
+    const score = Math.round((Object.values(rep.answers).filter(v => v === 'Yes').length / Object.keys(rep.answers).length) * 100);
+    docP.setFontSize(14);
+    docP.text(`COMPLIANCE SCORE: ${score}%`, 140, 50);
+
+    // Table
+    docP.autoTable({
+      startY: 70,
+      head: [['Requirement', 'Response']],
+      body: Object.entries(rep.answers),
+      headStyles: { fillColor: [27, 38, 59] },
+      alternateRowStyles: { fillColor: [245, 245, 245] }
+    });
+    
+    if (rep.notes) {
+        const finalY = docP.lastAutoTable.finalY + 10;
+        docP.setFontSize(11);
+        docP.text("Auditor Notes:", 15, finalY);
+        docP.setFontSize(9);
+        docP.text(rep.notes, 15, finalY + 6, { maxWidth: 180 });
+    }
+
+    docP.save(`CK_Audit_${rep.store}_${rep.name.replace(/\s/g, '_')}.pdf`);
+  };
+
+  if (loading) return <div style={{height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)'}}><Loader2 className="animate-spin" size={40} color="var(--accent-cyan)"/></div>;
 
   return (
-    <div className="container">
+    <div className="app-container">
       <CustomStyles />
       
-      {/* NAVIGATION HEADER */}
-      <header className="header">
-        <div style={{display:'flex', alignItems:'center', gap:'12px', fontSize:'1.6rem', fontWeight:800}}>
-          <CircleDot color="var(--accent)" size={32}/> CKSURE <span style={{color:'var(--orange)'}}>OS</span>
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast ${toast.type === 'error' ? 'error' : ''}`}>
+            {toast.type === 'error' ? <AlertTriangle size={20}/> : <CheckCircle2 size={20}/>}
+            {toast.msg}
+          </div>
         </div>
-        <div style={{display:'flex', gap:'10px'}}>
-          <button className={`btn btn-ghost ${view === "form" ? "btn-active" : ""}`} onClick={() => setView("form")}><ClipboardCheck size={18}/> Audit Form</button>
-          {!user ? (
-            <button className={`btn btn-ghost ${view === "login" ? "btn-active" : ""}`} onClick={() => setView("login")}><LogIn size={18}/> Admin Login</button>
-          ) : (
+      )}
+
+      <header className="header">
+        <div className="brand">
+          <CircleDot size={28} color="var(--accent-orange)"/>
+          <div><span className="store">CKSURE</span> <span className="checklist">FOOD</span></div>
+        </div>
+        <div className="nav-group">
+          <button className={`nav-btn ${view === "form" ? "active" : ""}`} onClick={() => setView("form")}><ClipboardCheck size={18}/> New Audit</button>
+          {user ? (
             <>
-              <button className={`btn btn-ghost ${view === "admin" ? "btn-active" : ""}`} onClick={() => setView("admin")}><LayoutDashboard size={18}/> Dashboard</button>
-              <button className="btn btn-danger" onClick={() => signOut(auth)}><LogOut size={18}/></button>
+              <button className={`nav-btn ${view === "admin" ? "active" : ""}`} onClick={() => setView("admin")}><LayoutDashboard size={18}/> Dashboard</button>
+              <button className="nav-btn danger" onClick={() => signOut(auth)}><LogOut size={18}/></button>
             </>
+          ) : (
+            <button className={`nav-btn ${view === "login" ? "active" : ""}`} onClick={() => setView("login")}><LogIn size={18}/> Admin Login</button>
           )}
         </div>
       </header>
 
-      {/* VIEW: AUDIT FORM */}
+      {view === "login" && (
+        <div className="card" style={{ maxWidth: '400px', margin: '60px auto' }}>
+          <h2 style={{textAlign:'center', marginBottom:'25px'}}>Secure Access</h2>
+          <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
+            <div><label className="input-label">Email Address</label><input className="input-field" placeholder="email@circlek.com" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} /></div>
+            <div><label className="input-label">Password</label><input className="input-field" type="password" value={loginForm.pass} onChange={e => setLoginForm({...loginForm, pass: e.target.value})} /></div>
+            <button className="nav-btn primary w-full" style={{justifyContent:'center', marginTop:'10px', padding:'15px'}} onClick={handleLogin}>Log In</button>
+          </div>
+        </div>
+      )}
+
       {view === "form" && (
-        <div style={{maxWidth:700, margin:'0 auto'}}>
-          {step === 0 ? (
-            <div className="card">
-              <h2 style={{textAlign:'center', marginBottom:30}}>Start New Inspection</h2>
-              <StatusBox />
-              <label style={{fontSize:'0.8rem', color:'var(--muted)'}}>INSPECTOR FULL NAME</label>
-              <input className="input" placeholder="e.g. John Doe" value={audit.name} onChange={e => setAudit({...audit, name: e.target.value})} />
-              <label style={{fontSize:'0.8rem', color:'var(--muted)'}}>7-DIGIT STORE NUMBER</label>
-              <input className="input" placeholder="0000000" maxLength={7} value={audit.store} onChange={e => setAudit({...audit, store: e.target.value})} />
-              <button className="btn btn-primary" style={{width:'100%', padding:18, marginTop:10}} disabled={!audit.name || audit.store.length < 5} onClick={() => setStep(1)}>Initialize & Start</button>
+        <div className="card" style={{ maxWidth: '800px', margin: '0 auto' }}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+            <h2 style={{margin:0}}>Store Compliance</h2>
+            {isStoreLocked && <div style={{display:'flex', alignItems:'center', gap:'8px', color:'var(--success)', fontSize:'0.8rem', fontWeight:800}}><Lock size={14}/> STORE LOCKED</div>}
+          </div>
+          
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px', marginBottom:'24px'}}>
+            <div>
+              <label className="input-label">Inspector Name</label>
+              <input className="input-field" placeholder="Enter your full name" value={auditForm.name} onChange={e => setAuditForm({...auditForm, name: e.target.value})} />
             </div>
-          ) : step <= sections.length ? (
-            <div className="card">
-              <div className="progress-dots">
-                {sections.map((_, i) => <div key={i} className={`dot ${i + 1 === step ? 'active' : ''}`} />)}
-              </div>
-              <div style={{display:'flex', justifyContent:'space-between', marginBottom:25}}>
-                <h2 style={{margin:0, color:'var(--accent)'}}>{sections[step-1][0]}</h2>
-                <span style={{color:'var(--muted)', fontSize:'0.8rem'}}>SECTION {step} OF {sections.length}</span>
-              </div>
-
-              {sections[step-1][1].map(q => (
-                <div key={q.id} style={{marginBottom:35, borderBottom:'1px solid var(--border)', paddingBottom:25}}>
-                  <p style={{fontWeight:600, fontSize:'1.1rem', marginBottom:18}}>{q.text} <span style={{color:'var(--danger)'}}>*</span></p>
-                  
-                  {q.type === "Yes/No/NA" && (
-                    <div style={{display:'flex', gap:10}}>
-                      {['Yes', 'No', 'N/A'].map(o => (
-                        <button key={o} style={{flex:1, padding:15}} 
-                        className={`btn btn-ghost ${audit.answers[q.text] === o ? `status-${o.toLowerCase().replace('/','')}` : ''}`} 
-                        onClick={() => setAudit({...audit, answers: {...audit.answers, [q.text]: o}})}>{o}</button>
-                      ))}
+            <div>
+              <label className="input-label">Store Number</label>
+              <input className="input-field" placeholder="Ex: 1234567" disabled={isStoreLocked} value={auditForm.store} onChange={e => setAuditForm({...auditForm, store: e.target.value.replace(/\D/g, '')})} />
+            </div>
+          </div>
+          
+          <div style={{display:'flex', flexDirection:'column', gap:'16px'}}>
+            {questions.map((q, idx) => (
+                <div key={q.id} style={{padding:'20px', background:'rgba(255,255,255,0.03)', borderRadius:'20px', border:'1px solid rgba(255,255,255,0.05)'}}>
+                    <div style={{display:'flex', gap:'15px'}}>
+                        <div style={{background:'var(--accent-orange)', color:'var(--bg)', width:'28px', height:'28px', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:'0.8rem', flexShrink:0}}>{idx + 1}</div>
+                        <div style={{flex:1}}>
+                            <p style={{margin:'0 0 15px', fontWeight:600, fontSize:'1.05rem'}}>{q.text}</p>
+                            {q.type === 'text' ? (
+                                <input className="input-field" placeholder="Enter observation..." onChange={e => setAuditForm({...auditForm, answers: {...auditForm.answers, [q.text]: e.target.value}})} />
+                            ) : (
+                                <div style={{display:'flex', gap:'10px'}}>
+                                    {(q.type === 'radio' ? q.options?.split(',').map(s => s.trim()) : ['Yes', 'No', 'N/A']).map(opt => {
+                                        let activeClass = "";
+                                        if (auditForm.answers[q.text] === opt) {
+                                            if (q.type === 'radio') activeClass = "active-selected";
+                                            else {
+                                                if (opt === 'Yes') activeClass = "active-yes";
+                                                if (opt === 'No') activeClass = "active-no";
+                                                if (opt === 'N/A') activeClass = "active-na";
+                                            }
+                                        }
+                                        return (
+                                            <button key={opt} className={`opt-btn ${activeClass}`} onClick={() => setAuditForm({...auditForm, answers: {...auditForm.answers, [q.text]: opt}})}>{opt}</button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                  )}
-
-                  {q.type === "Radio MCQ" && (
-                    <div style={{display:'grid', gap:10}}>
-                      {q.options?.split(',').map(opt => (
-                        <button key={opt} className={`btn btn-ghost ${audit.answers[q.text] === opt.trim() ? 'btn-active' : ''}`}
-                        onClick={() => setAudit({...audit, answers: {...audit.answers, [q.text]: opt.trim()}})}>{opt.trim()}</button>
-                      ))}
-                    </div>
-                  )}
-
-                  {q.type === "Text Input" && (
-                    <input className="input" placeholder="Type observation..." value={audit.answers[q.text] || ""} onChange={e => setAudit({...audit, answers: {...audit.answers, [q.text]: e.target.value}})} />
-                  )}
-
-                  {audit.answers[q.text] === "No" && (
-                    <div style={{marginTop:15, padding:20, border:'2px dashed var(--danger)', borderRadius:15, textAlign:'center'}}>
-                      <Camera color="var(--danger)" style={{marginBottom:10}}/>
-                      <p style={{fontSize:'0.8rem', color:'var(--danger)', fontWeight:700}}>VIOLATION PHOTO REQUIRED</p>
-                      <input type="file" accept="image/*" capture="environment" onChange={e => {
-                        const reader = new FileReader();
-                        reader.onload = () => setAudit({...audit, photos: {...audit.photos, [q.text]: reader.result}});
-                        if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
-                      }} />
-                      {audit.photos[q.text] && <p style={{color:'var(--success)', marginTop:10}}>✓ Image Attached</p>}
-                    </div>
-                  )}
                 </div>
-              ))}
+            ))}
+          </div>
 
-              <div style={{display:'flex', gap:15}}>
-                <button className="btn btn-ghost" onClick={() => setStep(step - 1)}>Previous</button>
-                <button className="btn btn-primary" style={{flex:1}} 
-                  disabled={!audit.name || !audit.store}
-                  onClick={() => setStep(step + 1)}>Save & Continue</button>
+          <div style={{marginTop:'25px'}}>
+            <label className="input-label">Additional Comments / Observations</label>
+            <textarea className="input-field" style={{minHeight:'120px'}} placeholder="Detail any critical failures or corrective actions taken..." value={auditForm.notes} onChange={e => setAuditForm({...auditForm, notes: e.target.value})} />
+          </div>
+          <button className="nav-btn primary w-full" style={{justifyContent:'center', marginTop:'30px', padding:'20px', fontSize:'1.1rem'}} onClick={handleAuditSubmit}>Submit Answers</button>
+        </div>
+      )}
+
+      {view === "admin" && (
+        <div style={{animation: 'fadeIn 0.4s ease-out'}}>
+          <div className="stat-grid">
+            <div className="stat-card">
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <span className="stat-label">System Audits</span>
+                <FileBarChart size={18} color="var(--accent-cyan)"/>
+              </div>
+              <span className="stat-value">{analytics.total}</span>
+            </div>
+            <div className="stat-card">
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <span className="stat-label">Compliance</span>
+                <TrendingUp size={18} color="var(--success)"/>
+              </div>
+              <span className="stat-value" style={{color: analytics.compliance > 85 ? 'var(--success)' : 'var(--warning)'}}>{analytics.compliance}%</span>
+            </div>
+            <div className="stat-card">
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <span className="stat-label">Failures</span>
+                <AlertTriangle size={18} color="var(--danger)"/>
+              </div>
+              <span className="stat-value" style={{color:'var(--danger)'}}>{analytics.issues}</span>
+            </div>
+            <div className="stat-card" style={{justifyContent:'center'}}>
+              <div style={{display:'flex', alignItems:'center', gap:'12px', background:'rgba(0,0,0,0.2)', padding:'10px', borderRadius:'14px'}}>
+                <Search size={18} color="var(--text-secondary)"/>
+                <input className="input-field" style={{border:'none', background:'none', padding:0, fontSize:'0.85rem'}} placeholder="Filter by store/name..." value={searchStore} onChange={e => { setSearchStore(e.target.value); setItemsToShow(PAGE_SIZE); }} />
               </div>
             </div>
-          ) : (
-            <div className="card" style={{textAlign:'center', padding:'50px 20px'}}>
-              <CheckCircle2 size={80} color="var(--success)" style={{marginBottom:20}}/>
-              <h1>Audit Complete</h1>
-              <StatusBox />
-              <p style={{color:'var(--muted)', marginBottom:30}}>All sections verified and mandatory photos uploaded.</p>
-              <button className="btn btn-primary" style={{width:'100%', padding:20, fontSize:'1.1rem'}} onClick={async () => {
-                try {
-                  setStatus({ msg: "Transmitting report...", type: "success" });
-                  await addDoc(collection(db, "store_checklists"), { ...audit, createdAt: serverTimestamp() });
-                  setStatus({ msg: "Report Transmitted Successfully!", type: "success" });
-                  setTimeout(() => window.location.reload(), 2000);
-                } catch (e) {
-                  setStatus({ msg: "Failed to send report.", type: "error" });
-                }
-              }}>Certify & Submit Report</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* VIEW: ADMIN LOGIN */}
-      {view === "login" && !user && (
-        <div className="card" style={{maxWidth:400, margin:'100px auto'}}>
-          <h2 style={{textAlign:'center'}}>Secure Access</h2>
-          <StatusBox />
-          <input className="input" placeholder="Admin Email" onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
-          <input className="input" type="password" placeholder="Password" onChange={e => setLoginForm({...loginForm, pass: e.target.value})} />
-          <button className="btn btn-primary" style={{width:'100%', padding:15}} onClick={() => {
-            signInWithEmailAndPassword(auth, loginForm.email, loginForm.pass)
-            .then(() => setView("admin"))
-            .catch(() => setStatus({ msg: "Invalid Credentials", type: "error" }));
-          }}>Sign In</button>
-        </div>
-      )}
-
-      {/* VIEW: ADMIN DASHBOARD */}
-      {view === "admin" && user && (
-        <>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(250px, 1fr))', gap:20, marginBottom:30}}>
-            <div className="stat-card"><TrendingUp color="var(--accent)"/> <div className="stat-val">{stats.total}</div> <div style={{color:'var(--muted)'}}>Total Audits</div></div>
-            <div className="stat-card"><ShieldCheck color="var(--success)"/> <div className="stat-val">{stats.compliance}%</div> <div style={{color:'var(--muted)'}}>Compliance Score</div></div>
-            <div className="stat-card"><AlertTriangle color="var(--danger)"/> <div className="stat-val">{stats.violations}</div> <div style={{color:'var(--muted)'}}>Critical Violations</div></div>
           </div>
 
           <div className="tab-bar">
-            <div className={`tab-item ${activeTab === "reports" ? "active" : ""}`} onClick={() => setActiveTab("reports")}>Report Viewer</div>
-            {profile?.role === "super" && (
+            <div className={`tab-item ${activeTab === "analytics" ? "active" : ""}`} onClick={() => setActiveTab("analytics")}>Audit Records</div>
+            {adminData?.role === "super" && (
               <>
-                <div className={`tab-item ${activeTab === "staff" ? "active" : ""}`} onClick={() => setActiveTab("staff")}>Team Management</div>
-                <div className={`tab-item ${activeTab === "setup" ? "active" : ""}`} onClick={() => setActiveTab("setup")}>Checklist Builder</div>
-                <div className={`tab-item ${activeTab === "qr" ? "active" : ""}`} onClick={() => setActiveTab("qr")}>QR Engine</div>
+                <div className={`tab-item ${activeTab === "questions" ? "active" : ""}`} onClick={() => setActiveTab("questions")}>Form Builder</div>
+                <div className={`tab-item ${activeTab === "admins" ? "active" : ""}`} onClick={() => setActiveTab("admins")}>Users & QR</div>
               </>
             )}
           </div>
-          
-          <StatusBox />
 
-          {activeTab === "reports" && (
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(360px, 1fr))', gap:25}}>
-              {reports.length === 0 ? (
-                <div className="card" style={{gridColumn:'1/-1', textAlign:'center', color:'var(--muted)'}}>No reports found.</div>
-              ) : (
-                reports.map(r => (
-                  <div key={r.id} className="card" style={{padding:20, borderLeft:'4px solid var(--accent)'}}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:15}}>
+          {activeTab === "analytics" && (
+            <>
+              <div className="report-grid">
+                {analytics.list.map(r => (
+                  <div key={r.id} className="report-card">
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'start', marginBottom:'15px'}}>
                       <div>
-                        <div style={{fontSize:'0.7rem', color:'var(--accent)', fontWeight:800, letterSpacing:1}}>OFFICIAL RECORD</div>
-                        <div style={{fontSize:'1.4rem', fontWeight:800}}>STORE #{r.store}</div>
+                        <div style={{color:'var(--accent-orange)', fontWeight:800, fontSize:'1.1rem'}}>Store #{r.store}</div>
+                        <div style={{fontSize:'0.85rem', fontWeight:600, marginTop:'4px'}}>{r.name}</div>
                       </div>
                       <div style={{textAlign:'right'}}>
-                        <div style={{fontSize:'0.8rem', fontWeight:600}}>{r.createdAt?.toDate().toLocaleDateString()}</div>
-                        <div style={{fontSize:'0.7rem', color:'var(--muted)'}}>{r.createdAt?.toDate().toLocaleTimeString()}</div>
+                        <div style={{fontSize:'1.2rem', fontWeight:800, color: (r.yesCount/r.totalQuestions) > 0.8 ? 'var(--success)' : 'var(--danger)'}}>
+                            {Math.round((r.yesCount/r.totalQuestions)*100)}%
+                        </div>
                       </div>
                     </div>
-                    <div style={{background:'rgba(255,255,255,0.03)', padding:12, borderRadius:12, marginBottom:20}}>
-                      <div style={{display:'flex', alignItems:'center', gap:10, fontSize:'0.9rem'}}>
-                        <UserIcon size={16} color="var(--accent)"/><span style={{fontWeight:600}}>{r.name || "Unknown"}</span>
-                      </div>
+                    
+                    <div style={{fontSize:'0.75rem', color:'var(--text-secondary)', display:'flex', gap:'5px', alignItems:'center', marginBottom:'20px'}}>
+                      <Clock size={12}/> {formatDateTime(r.createdAt)}
                     </div>
-                    <div style={{display:'flex', gap:10}}>
-                      <button className="btn btn-primary" style={{flex:2}} onClick={() => setSelectedReport(r)}><Eye size={16}/> View</button>
-                      <button className="btn btn-ghost" style={{flex:1}} onClick={() => generatePDF(r)}><Download size={16}/></button>
-                      {profile?.role === "super" && (
-                        <button className="btn btn-danger" onClick={async () => {
-                          if(window.confirm("Delete record?")) {
-                            await deleteDoc(doc(db, "store_checklists", r.id));
-                            setStatus({ msg: "Report Deleted", type: "success" });
-                          }
-                        }}><Trash2 size={16}/></button>
-                      )}
+
+                    <div style={{display:'flex', gap:'8px'}}>
+                        <button className="nav-btn primary" style={{flex:1, padding:'8px'}} onClick={() => setSelectedReport(r)}><Eye size={16}/> View</button>
+                        <button className="nav-btn" style={{padding:'8px'}} onClick={() => exportPDF(r)}><Download size={16}/></button>
+                        {adminData?.role === 'super' && <button className="nav-btn danger" style={{padding:'8px'}} onClick={() => window.confirm("Delete record?") && deleteDoc(doc(db, "store_checklists", r.id))}><Trash2 size={16}/></button>}
                     </div>
                   </div>
-                ))
+                ))}
+              </div>
+              {analytics.hasMore && (
+                <div style={{textAlign:'center', marginTop:'30px'}}><button className="nav-btn" onClick={() => setItemsToShow(prev => prev + PAGE_SIZE)}><ChevronDown size={18}/> Show More Records</button></div>
               )}
-            </div>
+            </>
           )}
 
-          {activeTab === "staff" && (
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1.5fr', gap:30}}>
+          {activeTab === "admins" && (
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(350px, 1fr))', gap:'24px'}}>
               <div className="card">
-                <h3>Add New Member</h3>
-                <input className="input" placeholder="User Email" onChange={e => setNewUser({...newUser, email: e.target.value})} />
-                <input className="input" placeholder="Store # (or 'All')" onChange={e => setNewUser({...newUser, store: e.target.value})} />
-                <input className="input" type="password" placeholder="Password" onChange={e => setNewUser({...newUser, pass: e.target.value})} />
-                <button className="btn btn-primary" style={{width:'100%'}} onClick={async () => {
-                   try {
-                     const res = await createUserWithEmailAndPassword(auth, newUser.email, newUser.pass);
-                     await setDoc(doc(db, "admins", res.user.uid), { email: newUser.email, assignedStore: newUser.store, role: newUser.store === "All" ? "super" : "viewer" });
-                     setStatus({ msg: "Member Deployed", type: "success" });
-                   } catch (e) { setStatus({ msg: e.message, type: "error" }); }
-                }}>Deploy Member</button>
+                <h3>QR Code Generator</h3>
+                <p style={{fontSize:'0.85rem', opacity:0.6, marginBottom:'20px'}}>Generate a store-specific audit link. Scanning the QR will automatically lock the store number in the audit form.</p>
+                <div style={{display:'flex', gap:'10px', marginBottom:'20px'}}>
+                  <input className="input-field" placeholder="Store #" value={qrStore} onChange={e => setQrStore(e.target.value.replace(/\D/g, ''))} />
+                  <button className="nav-btn primary" onClick={generateQR}><QrCode size={18}/> Generate</button>
+                </div>
+                <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:'15px', padding:'20px', background:'rgba(255,255,255,0.02)', borderRadius:'20px'}}>
+                    <div className="qr-box" ref={qrRef}><QrCode size={40} style={{opacity:0.2}}/></div>
+                    {qrStore && <button className="nav-btn" style={{fontSize:'0.8rem'}} onClick={() => { navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?store=${qrStore}`); showMessage("Link Copied!"); }}><Copy size={14}/> Copy Audit URL</button>}
+                </div>
               </div>
+              
               <div className="card">
                 <h3>System Users</h3>
-                <table>
-                  <thead><tr><th>Email</th><th>Store</th><th>Action</th></tr></thead>
-                  <tbody>{usersList.map(u => (
-                    <tr key={u.id}><td>{u.email}</td><td>{u.assignedStore}</td><td><Trash color="var(--danger)" size={16} onClick={async () => { await deleteDoc(doc(db, "admins", u.id)); setStatus({msg:"User Removed", type:"success"}); }}/></td></tr>
-                  ))}</tbody>
-                </table>
+                <div style={{display:'flex', flexDirection:'column', gap:'12px', marginBottom:'25px'}}>
+                    <input className="input-field" placeholder="User Email" value={newAdmin.email} onChange={e => setNewAdmin({...newAdmin, email: e.target.value})} />
+                    <input className="input-field" type="password" placeholder="Password" value={newAdmin.pass} onChange={e => setNewAdmin({...newAdmin, pass: e.target.value})} />
+                    <div style={{display:'flex', gap:'10px'}}>
+                        <select className="input-field" style={{flex:1}} value={newAdmin.role} onChange={e => setNewAdmin({...newAdmin, role: e.target.value})}>
+                            <option value="viewer">Viewer</option>
+                            <option value="manager">Store Manager</option>
+                            <option value="super">Super Admin</option>
+                        </select>
+                        {newAdmin.role === 'manager' && <input className="input-field" style={{flex:1}} placeholder="Assigned Store" value={newAdmin.store} onChange={e => setNewAdmin({...newAdmin, store: e.target.value})} />}
+                    </div>
+                    <button className="nav-btn primary w-full" style={{justifyContent:'center'}} onClick={createAdmin}>Create Account</button>
+                </div>
+                <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
+                    {admins.map(a => (
+                        <div key={a.id} style={{display:'flex', justifyContent:'space-between', padding:'12px 15px', background:'rgba(0,0,0,0.2)', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.05)'}}>
+                            <div>
+                                <div style={{fontSize:'0.9rem', fontWeight:600}}>{a.email}</div>
+                                <div style={{fontSize:'0.7rem', color:'var(--accent-cyan)', textTransform:'uppercase'}}>{a.role} {a.assignedStore && `| Store #${a.assignedStore}`}</div>
+                            </div>
+                            {a.email !== user.email && <Trash2 size={16} color="var(--danger)" className="cursor-pointer" onClick={() => window.confirm("Delete user?") && deleteDoc(doc(db, "admins", a.id))} />}
+                        </div>
+                    ))}
+                </div>
               </div>
             </div>
           )}
-
-          {activeTab === "setup" && (
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1.5fr', gap:30}}>
-              <div className="card">
-                <h3>Question Architect</h3>
-                <input className="input" placeholder="Section Name" value={newQ.section} onChange={e => setNewQ({...newQ, section: e.target.value})} />
-                <textarea className="input" placeholder="Question Text" value={newQ.text} onChange={e => setNewQ({...newQ, text: e.target.value})} />
-                <select className="input" value={newQ.type} onChange={e => setNewQ({...newQ, type: e.target.value})}>
-                  <option>Yes/No/NA</option><option>Radio MCQ</option><option>Text Input</option>
-                </select>
-                {newQ.type === "Radio MCQ" && <input className="input" placeholder="Options (comma separated)" onChange={e => setNewQ({...newQ, options: e.target.value})} />}
-                <button className="btn btn-primary" style={{width:'100%'}} onClick={async () => { 
-                   await addDoc(collection(db, "checklist_questions"), newQ); 
-                   setNewQ({text:"", section:"", type:"Yes/No/NA"}); 
-                   setStatus({msg:"Question Published", type:"success"});
-                }}>Publish Question</button>
+          
+          {activeTab === "questions" && (
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1.5fr', gap:'24px'}}>
+              <div className="card" style={{height:'fit-content'}}>
+                <h3>New Form Section</h3>
+                <div style={{display:'flex', flexDirection:'column', gap:'16px'}}>
+                    <div>
+                        <label className="input-label">Requirement Description</label>
+                        <textarea className="input-field" style={{minHeight:'80px'}} value={newQ.text} onChange={e => setNewQ({...newQ, text: e.target.value})} placeholder="Ex: Are beverage fountain nozzles clean and sanitized?" />
+                    </div>
+                    <div>
+                        <label className="input-label">Answer Type</label>
+                        <select className="input-field" value={newQ.type} onChange={e => setNewQ({...newQ, type: e.target.value})}>
+                            <option value="yesno">Yes / No / N.A (Compliance)</option>
+                            <option value="text">Text Entry (Open Observation)</option>
+                            <option value="radio">Custom Multiple Choice</option>
+                        </select>
+                    </div>
+                    {newQ.type === 'radio' && (
+                        <div>
+                            <label className="input-label">Choices (Comma Separated)</label>
+                            <input className="input-field" placeholder="Good, Average, Poor" value={newQ.options} onChange={e => setNewQ({...newQ, options: e.target.value})} />
+                        </div>
+                    )}
+                    <button className="nav-btn primary w-full" style={{justifyContent:'center'}} onClick={async () => {
+                       if(!newQ.text) return;
+                       await addDoc(collection(db, "checklist_questions"), { 
+                           ...newQ, 
+                           order: questions.length,
+                           createdAt: serverTimestamp() 
+                        });
+                       setNewQ({text:"", type:"yesno", options:""});
+                       showMessage("Question added to audit form");
+                    }}>Append to Form</button>
+                </div>
               </div>
-              <div className="card">
-                {sections.map(([sec, qs]) => (
-                  <div key={sec} style={{marginBottom:20}}>
-                    <h4 style={{color:'var(--accent)', borderBottom:'1px solid var(--border)', paddingBottom:5}}>{sec}</h4>
-                    {qs.map(q => (
-                      <div key={q.id} style={{display:'flex', justifyContent:'space-between', padding:10, background:'rgba(0,0,0,0.2)', marginBottom:5, borderRadius:10}}>
-                        <span style={{fontSize:'0.85rem'}}>{q.text}</span>
-                        <Trash size={14} color="var(--danger)" onClick={async () => { await deleteDoc(doc(db, "checklist_questions", q.id)); setStatus({msg:"Question Removed", type:"success"}); }}/>
-                      </div>
-                    ))}
+
+              <div className="card shadow-inner">
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+                    <h3>Live Form Order</h3>
+                    <span className="stat-label" style={{fontSize:'0.7rem'}}>{questions.length} Active Items</span>
+                </div>
+                {questions.map((q, idx) => (
+                  <div key={q.id} className="question-editor-item">
+                    <div style={{display:'flex', gap:'15px', alignItems:'center'}}>
+                        <div style={{display:'flex', flexDirection:'column', gap:'4px', color:'var(--text-secondary)'}}>
+                           <button className="cursor-pointer hover:text-white" onClick={() => idx > 0 && updateDoc(doc(db, "checklist_questions", q.id), {order: idx-1}) && updateDoc(doc(db, "checklist_questions", questions[idx-1].id), {order: idx})}><ChevronUp size={18}/></button>
+                           <button className="cursor-pointer hover:text-white" onClick={() => idx < questions.length - 1 && updateDoc(doc(db, "checklist_questions", q.id), {order: idx+1}) && updateDoc(doc(db, "checklist_questions", questions[idx+1].id), {order: idx})}><ChevronDown size={18}/></button>
+                        </div>
+                        <div style={{flex:1}}>
+                           <div style={{display:'flex', justifyContent:'space-between'}}>
+                                <span style={{fontSize:'0.95rem', fontWeight:600}}>{q.text}</span>
+                                <button className="nav-btn danger" style={{padding:'6px', background:'none', border:'none'}} onClick={() => window.confirm("Remove question?") && deleteDoc(doc(db, "checklist_questions", q.id))}><Trash2 size={16}/></button>
+                           </div>
+                           <div style={{fontSize:'0.7rem', color:'var(--accent-cyan)', marginTop:'6px', textTransform:'uppercase', fontWeight:700}}>
+                               {q.type} {q.options && `[${q.options}]`}
+                           </div>
+                        </div>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
-
-          {activeTab === "qr" && (
-            <div className="card" style={{textAlign:'center'}}>
-              <h2>Store QR Portal</h2>
-              <input className="input" style={{maxWidth:300, textAlign:'center'}} placeholder="Enter Store Number" onChange={e => setQrId(e.target.value)} />
-              {qrId.length > 3 && (
-                <div style={{marginTop:20}}>
-                  <div className="qr-container">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + "?store=" + qrId)}`} alt="QR" />
-                  </div>
-                  <h3 style={{color:'var(--accent)'}}>STORE {qrId}</h3>
-                  <button className="btn btn-ghost" style={{margin:'10px auto'}} onClick={() => window.print()}>Print Code</button>
-                </div>
-              )}
-            </div>
-          )}
-        </>
+        </div>
       )}
 
-      {/* REPORT MODAL */}
       {selectedReport && (
-        <div className="modal" onClick={() => setSelectedReport(null)}>
+        <div className="modal-overlay" onClick={() => setSelectedReport(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div style={{display:'flex', justifyContent:'space-between', borderBottom:'1px solid var(--border)', paddingBottom:20, marginBottom:20}}>
+            <button style={{position:'absolute', top:'20px', right:'20px', background:'none', border:'none', color:'white', cursor:'pointer'}} onClick={() => setSelectedReport(null)}><X size={24}/></button>
+            
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'start', marginBottom:'30px'}}>
               <div>
-                <h2 style={{margin:0}}>Store Audit Report</h2>
-                <p style={{color:'var(--muted)', margin:0}}>Inspector: {selectedReport.name} | Store #{selectedReport.store}</p>
-                <p style={{color:'var(--muted)', fontSize:'0.8rem'}}>{selectedReport.createdAt?.toDate().toLocaleString()}</p>
+                <h2 style={{margin:0, color:'var(--accent-orange)'}}>Store #{selectedReport.store}</h2>
+                <div style={{marginTop:'8px', display:'flex', gap:'15px', opacity:0.7, fontSize:'0.9rem'}}>
+                    <span style={{display:'flex', gap:'6px', alignItems:'center'}}><UserIcon size={14}/> {selectedReport.name}</span>
+                    <span style={{display:'flex', gap:'6px', alignItems:'center'}}><Calendar size={14}/> {formatDateTime(selectedReport.createdAt)}</span>
+                </div>
               </div>
-              <X onClick={() => setSelectedReport(null)} style={{cursor:'pointer'}}/>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:'2.5rem', fontWeight:900, color:'var(--accent-cyan)'}}>{Math.round((selectedReport.yesCount/selectedReport.totalQuestions)*100)}%</div>
+                <div style={{fontSize:'0.7rem', fontWeight:800, opacity:0.5}}>TOTAL COMPLIANCE</div>
+              </div>
             </div>
-            <div style={{display:'grid', gap:15}}>
-              {Object.entries(selectedReport.answers).map(([q, a]) => (
-                <div key={q} style={{padding:15, background:'rgba(255,255,255,0.02)', borderRadius:15, border:'1px solid var(--border)'}}>
-                  <div style={{fontSize:'0.75rem', color:'var(--muted)', textTransform:'uppercase'}}>{q}</div>
-                  <div style={{fontSize:'1.1rem', fontWeight:700, marginTop:5, color: a === "No" ? 'var(--danger)' : a === "Yes" ? 'var(--success)' : 'white'}}>{a}</div>
-                  {selectedReport.photos?.[q] && (
-                    <img src={selectedReport.photos[q]} style={{width:'100%', borderRadius:15, marginTop:15, border:'2px solid var(--danger)'}} />
-                  )}
+
+            <div style={{display:'grid', gap:'12px'}}>
+              {Object.entries(selectedReport.answers).map(([q, a], idx) => (
+                <div key={idx} style={{padding:'16px', background:'rgba(255,255,255,0.03)', borderRadius:'16px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid rgba(255,255,255,0.05)'}}>
+                  <span style={{opacity:0.9, fontSize:'0.95rem', flex:1, paddingRight:'20px'}}>{q}</span>
+                  <span style={{
+                      fontWeight:900, 
+                      padding:'6px 14px', 
+                      borderRadius:'10px', 
+                      fontSize:'0.8rem',
+                      background: a === 'No' ? 'var(--danger)' : a === 'Yes' ? 'var(--success)' : 'rgba(255,255,255,0.1)',
+                      color: a === 'Yes' ? 'var(--bg)' : 'white'
+                  }}>{a}</span>
                 </div>
               ))}
+              
+              {selectedReport.notes && (
+                  <div style={{marginTop:'20px', padding:'25px', background:'rgba(255,159,28,0.1)', borderRadius:'20px', border:'1px dashed var(--accent-orange)'}}>
+                      <div style={{display:'flex', gap:'10px', alignItems:'center', color:'var(--accent-orange)', marginBottom:'10px'}}>
+                          <AlertTriangle size={18}/>
+                          <span style={{fontWeight:800, fontSize:'0.9rem'}}>AUDITOR REMARKS</span>
+                      </div>
+                      <p style={{margin:0, fontSize:'1rem', lineHeight:'1.5'}}>{selectedReport.notes}</p>
+                  </div>
+              )}
             </div>
-            <button className="btn btn-primary" style={{width:'100%', marginTop:30, padding:20}} onClick={() => generatePDF(selectedReport)}>
-              <FileText size={20}/> Download Official PDF
-            </button>
+
+            <div style={{marginTop:'40px', display:'flex', gap:'15px'}}>
+                <button className="nav-btn primary w-full" style={{padding:'18px', justifyContent:'center', fontSize:'1.1rem'}} onClick={() => exportPDF(selectedReport)}>
+                    <Download size={20}/> Download Official PDF
+                </button>
+                <button className="nav-btn w-full" style={{padding:'18px', justifyContent:'center', fontSize:'1.1rem'}} onClick={() => setSelectedReport(null)}>
+                    Close
+                </button>
+            </div>
           </div>
         </div>
       )}
+
+      <footer style={{marginTop:'50px', padding:'40px', textAlign:'center', borderTop:'1px solid rgba(255,255,255,0.05)', opacity:0.5, fontSize:'0.85rem'}}>
+        &copy; Muhammad Azeem | muhammad.azeem@circlek.com
+      </footer>
     </div>
   );
 }
