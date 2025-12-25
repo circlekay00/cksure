@@ -81,6 +81,10 @@ const CustomStyles = () => (
     .progress-dots { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; }
     .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
     .dot.active { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+    .inline-msg { padding: 12px; border-radius: 12px; margin-bottom: 15px; font-weight: 600; font-size: 0.9rem; text-align: center; border: 1px solid transparent; }
+    .msg-success { background: rgba(0, 255, 156, 0.1); color: var(--success); border-color: rgba(0, 255, 156, 0.2); }
+    .msg-error { background: rgba(255, 77, 79, 0.1); color: var(--danger); border-color: rgba(255, 77, 79, 0.2); }
   `}</style>
 );
 
@@ -90,6 +94,9 @@ export default function EcoSurePro() {
   const [view, setView] = useState("form");
   const [activeTab, setActiveTab] = useState("reports");
   const [loading, setLoading] = useState(true);
+  
+  // Inline Message State
+  const [status, setStatus] = useState({ msg: "", type: "" });
 
   // Data States
   const [questions, setQuestions] = useState([]);
@@ -106,6 +113,24 @@ export default function EcoSurePro() {
   const [newQ, setNewQ] = useState({ text: "", section: "", type: "Yes/No/NA", options: "" });
   const [newUser, setNewUser] = useState({ email: "", pass: "", store: "" });
   const [qrId, setQrId] = useState("");
+
+  /* --- AUTO-CLEAR MESSAGES --- */
+  useEffect(() => {
+    if (status.msg) {
+      const timer = setTimeout(() => setStatus({ msg: "", type: "" }), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
+
+  /* --- INLINE MESSAGE COMPONENT --- */
+  const StatusBox = () => {
+    if (!status.msg) return null;
+    return (
+      <div className={`inline-msg ${status.type === 'error' ? 'msg-error' : 'msg-success'}`}>
+        {status.msg}
+      </div>
+    );
+  };
 
   /* --- AUTH & INITIALIZATION --- */
   useEffect(() => {
@@ -133,33 +158,20 @@ export default function EcoSurePro() {
       setUsersList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, []);
 
-/* --- REPLACEMENT 1: SECURE REPORT FETCHING --- */
   useEffect(() => {
     if (!user || !profile) return;
-
     let qR;
-    // Check if user is Super Admin or assigned to 'All'
     const isSuper = profile.role === "super" || profile.assignedStore === "All";
-
     if (isSuper) {
-      // Super Admins see everything ordered by newest first
       qR = query(collection(db, "store_checklists"), orderBy("createdAt", "desc"));
     } else {
-      // Regular inspectors only see their specific 7-digit store
-      qR = query(
-        collection(db, "store_checklists"),
-        where("store", "==", profile.assignedStore),
-        orderBy("createdAt", "desc")
-      );
+      qR = query(collection(db, "store_checklists"), where("store", "==", profile.assignedStore), orderBy("createdAt", "desc"));
     }
-
     const unsubscribe = onSnapshot(qR, (snapshot) => {
       setReports(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => {
-      console.error("REPORT FETCH ERROR:", err.message);
-      // If you see "The query requires an index" in the console, click the link it provides!
+      setStatus({ msg: "Fetch Error: Check Indexing", type: "error" });
     });
-
     return () => unsubscribe();
   }, [user, profile]);
 
@@ -187,33 +199,21 @@ export default function EcoSurePro() {
   }, [questions]);
 
   /* --- PDF GENERATOR --- */
-/* --- PDF GENERATOR (FIXED) --- */
   const generatePDF = async (r) => {
     try {
-      // Create the document
       const docP = new jsPDF();
-      
-      // Header Background
       docP.setFillColor(21, 25, 33); 
       docP.rect(0, 0, 210, 50, 'F');
-      
-      // Header Text
       docP.setTextColor(76, 201, 240); 
       docP.setFontSize(24); 
       docP.text("CKSURE AUDIT", 15, 25);
-      
       docP.setTextColor(255, 255, 255); 
       docP.setFontSize(10);
       docP.text(`STORE NUMBER: ${r.store}`, 15, 35);
       docP.text(`INSPECTOR NAME: ${r.name}`, 15, 41);
-      
       const timestamp = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString() : new Date().toLocaleString();
       docP.text(`DATE & TIME: ${timestamp}`, 15, 47);
-
-      // Prepare Table Data
       const tableData = Object.entries(r.answers).map(([q, a]) => [q, a]);
-
-      // CRITICAL FIX: Use autoTable(docP, ...) NOT docP.autoTable(...)
       autoTable(docP, {
         startY: 60,
         head: [['Question Detail', 'Status']],
@@ -222,15 +222,12 @@ export default function EcoSurePro() {
         headStyles: { fillColor: [76, 201, 240], textColor: 0 },
         styles: { font: "helvetica", fontSize: 9, cellPadding: 3 },
       });
-
-      // Add Photos on a New Page if they exist
       if (r.photos && Object.keys(r.photos).length > 0) {
         docP.addPage();
         docP.setTextColor(0, 0, 0);
         docP.setFontSize(14);
         docP.text("EVIDENCE & VIOLATION PHOTOS", 15, 20);
         let yPos = 30;
-        
         Object.entries(r.photos).forEach(([q, imgData]) => {
           if (yPos > 240) { docP.addPage(); yPos = 20; }
           docP.setFontSize(8);
@@ -239,11 +236,9 @@ export default function EcoSurePro() {
           yPos += 55;
         });
       }
-
-      docP.save(`EcoSure_Store_${r.store}.pdf`);
+      docP.save(`CKSure_Store_${r.store}.pdf`);
     } catch (err) {
-      console.error("PDF Generation Error:", err);
-      alert("Failed to generate PDF. Check the console for details.");
+      setStatus({ msg: "PDF Error: Check Console", type: "error" });
     }
   };
 
@@ -271,12 +266,13 @@ export default function EcoSurePro() {
         </div>
       </header>
 
-      {/* VIEW: AUDIT FORM (STEP-BY-STEP) */}
+      {/* VIEW: AUDIT FORM */}
       {view === "form" && (
         <div style={{maxWidth:700, margin:'0 auto'}}>
           {step === 0 ? (
             <div className="card">
               <h2 style={{textAlign:'center', marginBottom:30}}>Start New Inspection</h2>
+              <StatusBox />
               <label style={{fontSize:'0.8rem', color:'var(--muted)'}}>INSPECTOR FULL NAME</label>
               <input className="input" placeholder="e.g. John Doe" value={audit.name} onChange={e => setAudit({...audit, name: e.target.value})} />
               <label style={{fontSize:'0.8rem', color:'var(--muted)'}}>7-DIGIT STORE NUMBER</label>
@@ -320,7 +316,6 @@ export default function EcoSurePro() {
                     <input className="input" placeholder="Type observation..." value={audit.answers[q.text] || ""} onChange={e => setAudit({...audit, answers: {...audit.answers, [q.text]: e.target.value}})} />
                   )}
 
-                  {/* PHOTO REQUIREMENT IF NO */}
                   {audit.answers[q.text] === "No" && (
                     <div style={{marginTop:15, padding:20, border:'2px dashed var(--danger)', borderRadius:15, textAlign:'center'}}>
                       <Camera color="var(--danger)" style={{marginBottom:10}}/>
@@ -339,7 +334,7 @@ export default function EcoSurePro() {
               <div style={{display:'flex', gap:15}}>
                 <button className="btn btn-ghost" onClick={() => setStep(step - 1)}>Previous</button>
                 <button className="btn btn-primary" style={{flex:1}} 
-                  disabled={sections[step-1][1].some(q => !audit.answers[q.text] || (audit.answers[q.text] === "No" && !audit.photos[q.text]))}
+                  disabled={!audit.name || !audit.store}
                   onClick={() => setStep(step + 1)}>Save & Continue</button>
               </div>
             </div>
@@ -347,11 +342,17 @@ export default function EcoSurePro() {
             <div className="card" style={{textAlign:'center', padding:'50px 20px'}}>
               <CheckCircle2 size={80} color="var(--success)" style={{marginBottom:20}}/>
               <h1>Audit Complete</h1>
+              <StatusBox />
               <p style={{color:'var(--muted)', marginBottom:30}}>All sections verified and mandatory photos uploaded.</p>
               <button className="btn btn-primary" style={{width:'100%', padding:20, fontSize:'1.1rem'}} onClick={async () => {
-                await addDoc(collection(db, "store_checklists"), { ...audit, createdAt: serverTimestamp() });
-                alert("Report Successfully Transmitted");
-                window.location.reload();
+                try {
+                  setStatus({ msg: "Transmitting report...", type: "success" });
+                  await addDoc(collection(db, "store_checklists"), { ...audit, createdAt: serverTimestamp() });
+                  setStatus({ msg: "Report Transmitted Successfully!", type: "success" });
+                  setTimeout(() => window.location.reload(), 2000);
+                } catch (e) {
+                  setStatus({ msg: "Failed to send report.", type: "error" });
+                }
               }}>Certify & Submit Report</button>
             </div>
           )}
@@ -362,16 +363,20 @@ export default function EcoSurePro() {
       {view === "login" && !user && (
         <div className="card" style={{maxWidth:400, margin:'100px auto'}}>
           <h2 style={{textAlign:'center'}}>Secure Access</h2>
+          <StatusBox />
           <input className="input" placeholder="Admin Email" onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
           <input className="input" type="password" placeholder="Password" onChange={e => setLoginForm({...loginForm, pass: e.target.value})} />
-          <button className="btn btn-primary" style={{width:'100%', padding:15}} onClick={() => signInWithEmailAndPassword(auth, loginForm.email, loginForm.pass).then(() => setView("admin"))}>Sign In</button>
+          <button className="btn btn-primary" style={{width:'100%', padding:15}} onClick={() => {
+            signInWithEmailAndPassword(auth, loginForm.email, loginForm.pass)
+            .then(() => setView("admin"))
+            .catch(() => setStatus({ msg: "Invalid Credentials", type: "error" }));
+          }}>Sign In</button>
         </div>
       )}
 
       {/* VIEW: ADMIN DASHBOARD */}
       {view === "admin" && user && (
         <>
-          {/* ANALYTICS BAR */}
           <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(250px, 1fr))', gap:20, marginBottom:30}}>
             <div className="stat-card"><TrendingUp color="var(--accent)"/> <div className="stat-val">{stats.total}</div> <div style={{color:'var(--muted)'}}>Total Audits</div></div>
             <div className="stat-card"><ShieldCheck color="var(--success)"/> <div className="stat-val">{stats.compliance}%</div> <div style={{color:'var(--muted)'}}>Compliance Score</div></div>
@@ -388,14 +393,13 @@ export default function EcoSurePro() {
               </>
             )}
           </div>
+          
+          <StatusBox />
 
-          {/* REPORTS TAB */}
           {activeTab === "reports" && (
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(360px, 1fr))', gap:25}}>
               {reports.length === 0 ? (
-                <div className="card" style={{gridColumn:'1/-1', textAlign:'center', color:'var(--muted)'}}>
-                  No reports found for your assigned access level.
-                </div>
+                <div className="card" style={{gridColumn:'1/-1', textAlign:'center', color:'var(--muted)'}}>No reports found.</div>
               ) : (
                 reports.map(r => (
                   <div key={r.id} className="card" style={{padding:20, borderLeft:'4px solid var(--accent)'}}>
@@ -409,27 +413,21 @@ export default function EcoSurePro() {
                         <div style={{fontSize:'0.7rem', color:'var(--muted)'}}>{r.createdAt?.toDate().toLocaleTimeString()}</div>
                       </div>
                     </div>
-
                     <div style={{background:'rgba(255,255,255,0.03)', padding:12, borderRadius:12, marginBottom:20}}>
                       <div style={{display:'flex', alignItems:'center', gap:10, fontSize:'0.9rem'}}>
-                        <UserIcon size={16} color="var(--accent)"/>
-                        <span style={{fontWeight:600}}>{r.name || "Unknown Inspector"}</span>
+                        <UserIcon size={16} color="var(--accent)"/><span style={{fontWeight:600}}>{r.name || "Unknown"}</span>
                       </div>
                     </div>
-
                     <div style={{display:'flex', gap:10}}>
-                      <button className="btn btn-primary" style={{flex:2}} onClick={() => setSelectedReport(r)}>
-                        <Eye size={16}/> View
-                      </button>
-                      <button className="btn btn-ghost" style={{flex:1}} onClick={() => generatePDF(r)}>
-                        <Download size={16}/>
-                      </button>
+                      <button className="btn btn-primary" style={{flex:2}} onClick={() => setSelectedReport(r)}><Eye size={16}/> View</button>
+                      <button className="btn btn-ghost" style={{flex:1}} onClick={() => generatePDF(r)}><Download size={16}/></button>
                       {profile?.role === "super" && (
-                        <button className="btn btn-danger" onClick={() => {
-                          if(window.confirm("Delete this permanent record?")) deleteDoc(doc(db, "store_checklists", r.id));
-                        }}>
-                          <Trash2 size={16}/>
-                        </button>
+                        <button className="btn btn-danger" onClick={async () => {
+                          if(window.confirm("Delete record?")) {
+                            await deleteDoc(doc(db, "store_checklists", r.id));
+                            setStatus({ msg: "Report Deleted", type: "success" });
+                          }
+                        }}><Trash2 size={16}/></button>
                       )}
                     </div>
                   </div>
@@ -437,18 +435,20 @@ export default function EcoSurePro() {
               )}
             </div>
           )}
-          {/* STAFF TAB */}
+
           {activeTab === "staff" && (
             <div style={{display:'grid', gridTemplateColumns:'1fr 1.5fr', gap:30}}>
               <div className="card">
                 <h3>Add New Member</h3>
                 <input className="input" placeholder="User Email" onChange={e => setNewUser({...newUser, email: e.target.value})} />
-                <input className="input" placeholder="Assign Store # (or 'All')" onChange={e => setNewUser({...newUser, store: e.target.value})} />
-                <input className="input" type="password" placeholder="Temp Password" onChange={e => setNewUser({...newUser, pass: e.target.value})} />
+                <input className="input" placeholder="Store # (or 'All')" onChange={e => setNewUser({...newUser, store: e.target.value})} />
+                <input className="input" type="password" placeholder="Password" onChange={e => setNewUser({...newUser, pass: e.target.value})} />
                 <button className="btn btn-primary" style={{width:'100%'}} onClick={async () => {
-                   const res = await createUserWithEmailAndPassword(auth, newUser.email, newUser.pass);
-                   await setDoc(doc(db, "admins", res.user.uid), { email: newUser.email, assignedStore: newUser.store, role: newUser.store === "All" ? "super" : "viewer" });
-                   alert("Member Created");
+                   try {
+                     const res = await createUserWithEmailAndPassword(auth, newUser.email, newUser.pass);
+                     await setDoc(doc(db, "admins", res.user.uid), { email: newUser.email, assignedStore: newUser.store, role: newUser.store === "All" ? "super" : "viewer" });
+                     setStatus({ msg: "Member Deployed", type: "success" });
+                   } catch (e) { setStatus({ msg: e.message, type: "error" }); }
                 }}>Deploy Member</button>
               </div>
               <div className="card">
@@ -456,25 +456,28 @@ export default function EcoSurePro() {
                 <table>
                   <thead><tr><th>Email</th><th>Store</th><th>Action</th></tr></thead>
                   <tbody>{usersList.map(u => (
-                    <tr key={u.id}><td>{u.email}</td><td><span style={{color:'var(--accent)'}}>{u.assignedStore}</span></td><td><Trash color="var(--danger)" size={16} style={{cursor:'pointer'}} onClick={() => deleteDoc(doc(db, "admins", u.id))}/></td></tr>
+                    <tr key={u.id}><td>{u.email}</td><td>{u.assignedStore}</td><td><Trash color="var(--danger)" size={16} onClick={async () => { await deleteDoc(doc(db, "admins", u.id)); setStatus({msg:"User Removed", type:"success"}); }}/></td></tr>
                   ))}</tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* CHECKLIST BUILDER */}
           {activeTab === "setup" && (
             <div style={{display:'grid', gridTemplateColumns:'1fr 1.5fr', gap:30}}>
               <div className="card">
                 <h3>Question Architect</h3>
                 <input className="input" placeholder="Section Name" value={newQ.section} onChange={e => setNewQ({...newQ, section: e.target.value})} />
-                <textarea className="input" placeholder="The Question Text" value={newQ.text} onChange={e => setNewQ({...newQ, text: e.target.value})} />
+                <textarea className="input" placeholder="Question Text" value={newQ.text} onChange={e => setNewQ({...newQ, text: e.target.value})} />
                 <select className="input" value={newQ.type} onChange={e => setNewQ({...newQ, type: e.target.value})}>
                   <option>Yes/No/NA</option><option>Radio MCQ</option><option>Text Input</option>
                 </select>
                 {newQ.type === "Radio MCQ" && <input className="input" placeholder="Options (comma separated)" onChange={e => setNewQ({...newQ, options: e.target.value})} />}
-                <button className="btn btn-primary" style={{width:'100%'}} onClick={() => { addDoc(collection(db, "checklist_questions"), newQ); setNewQ({text:"", section:"", type:"Yes/No/NA"}); }}>Publish Question</button>
+                <button className="btn btn-primary" style={{width:'100%'}} onClick={async () => { 
+                   await addDoc(collection(db, "checklist_questions"), newQ); 
+                   setNewQ({text:"", section:"", type:"Yes/No/NA"}); 
+                   setStatus({msg:"Question Published", type:"success"});
+                }}>Publish Question</button>
               </div>
               <div className="card">
                 {sections.map(([sec, qs]) => (
@@ -483,7 +486,7 @@ export default function EcoSurePro() {
                     {qs.map(q => (
                       <div key={q.id} style={{display:'flex', justifyContent:'space-between', padding:10, background:'rgba(0,0,0,0.2)', marginBottom:5, borderRadius:10}}>
                         <span style={{fontSize:'0.85rem'}}>{q.text}</span>
-                        <Trash size={14} color="var(--danger)" style={{cursor:'pointer'}} onClick={() => deleteDoc(doc(db, "checklist_questions", q.id))}/>
+                        <Trash size={14} color="var(--danger)" onClick={async () => { await deleteDoc(doc(db, "checklist_questions", q.id)); setStatus({msg:"Question Removed", type:"success"}); }}/>
                       </div>
                     ))}
                   </div>
@@ -492,7 +495,6 @@ export default function EcoSurePro() {
             </div>
           )}
 
-          {/* QR ENGINE */}
           {activeTab === "qr" && (
             <div className="card" style={{textAlign:'center'}}>
               <h2>Store QR Portal</h2>
@@ -523,7 +525,6 @@ export default function EcoSurePro() {
               </div>
               <X onClick={() => setSelectedReport(null)} style={{cursor:'pointer'}}/>
             </div>
-            
             <div style={{display:'grid', gap:15}}>
               {Object.entries(selectedReport.answers).map(([q, a]) => (
                 <div key={q} style={{padding:15, background:'rgba(255,255,255,0.02)', borderRadius:15, border:'1px solid var(--border)'}}>
@@ -535,7 +536,6 @@ export default function EcoSurePro() {
                 </div>
               ))}
             </div>
-            
             <button className="btn btn-primary" style={{width:'100%', marginTop:30, padding:20}} onClick={() => generatePDF(selectedReport)}>
               <FileText size={20}/> Download Official PDF
             </button>
