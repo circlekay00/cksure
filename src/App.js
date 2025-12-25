@@ -1,3 +1,4 @@
+/* ================= PROGRESSIVE UPDATE: App.js ================= */
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   ClipboardCheck,
@@ -54,7 +55,8 @@ import {
   getDoc,
   updateDoc,
   query,
-  orderBy
+  orderBy,
+  where
 } from "firebase/firestore";
 
 /* ================= FIREBASE CONFIG ================= */
@@ -400,7 +402,7 @@ export default function App() {
     });
   };
 
-  /* ================= INIT & SEARCH PARAMS ================= */
+  /* ================= INIT & AUTH ================= */
   useEffect(() => {
     const init = async () => {
       await loadScript("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js");
@@ -421,7 +423,9 @@ export default function App() {
       if (u) {
         setUser(u);
         const snap = await getDoc(doc(db, "admins", u.uid));
-        if (snap.exists()) setAdminData(snap.data());
+        if (snap.exists()) {
+            setAdminData(snap.data());
+        }
       } else {
         setUser(null);
         setAdminData(null);
@@ -430,6 +434,7 @@ export default function App() {
     });
   }, []);
 
+  // Fetch Questions (Always Load)
   useEffect(() => {
     const qUnsub = onSnapshot(query(collection(db, "checklist_questions"), orderBy("order", "asc")), snap => {
       setQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -437,24 +442,41 @@ export default function App() {
     return () => qUnsub();
   }, []);
 
+  // Fetch Reports and Admins (Only after user & admin profile are ready)
   useEffect(() => {
-    if (!user) return;
+    if (!user || !adminData) return;
+    
+    // PROGRESS: Listens to all reports but the view is filtered in useMemo
     const rUnsub = onSnapshot(query(collection(db, "store_checklists"), orderBy("createdAt", "desc")), snap => {
       setReports(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+
     const aUnsub = onSnapshot(collection(db, "admins"), snap => {
       setAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+    
     return () => { rUnsub(); aUnsub(); };
-  }, [user]);
+  }, [user, adminData]);
 
-  /* ================= ANALYTICS ================= */
+  /* ================= ANALYTICS & VISIBILITY ================= */
   const analytics = useMemo(() => {
+    // If not logged in or profile not loaded, show nothing
+    if (!user || !adminData) return { total: 0, compliance: 0, issues: 0, list: [], hasMore: false };
+
     const filtered = reports.filter(r => {
-        // Filter by search bar
-        const matchesSearch = r.store.toLowerCase().includes(searchStore.toLowerCase()) || r.name.toLowerCase().includes(searchStore.toLowerCase());
-        // Filter by role restriction
-        if (adminData?.role === 'manager') return matchesSearch && r.store === adminData.assignedStore;
+        // Convert to strings and trim to ensure "1234" matches 1234
+        const reportStore = String(r.store || "").trim();
+        const searchStr = searchStore.toLowerCase();
+        
+        const matchesSearch = reportStore.includes(searchStr) || (r.name || "").toLowerCase().includes(searchStr);
+        
+        // PROGRESSIVE FIX: Ensure Managers see their reports even after refresh
+        if (adminData.role === 'manager') {
+            const managerAssignedStore = String(adminData.assignedStore || "").trim();
+            return matchesSearch && reportStore === managerAssignedStore;
+        }
+
+        // Viewers and Superadmins see all reports
         return matchesSearch;
     });
 
@@ -463,7 +485,7 @@ export default function App() {
     let issuesFound = 0;
 
     filtered.forEach(r => {
-      Object.values(r.answers).forEach(a => {
+      Object.values(r.answers || {}).forEach(a => {
         if (a === "Yes") { totalScore++; totalQuestions++; }
         else if (a === "No") { totalQuestions++; issuesFound++; }
       });
@@ -474,7 +496,7 @@ export default function App() {
     const hasMore = itemsToShow < filtered.length;
 
     return { total: filtered.length, compliance, issues: issuesFound, list: paginatedList, hasMore };
-  }, [reports, searchStore, itemsToShow, adminData]);
+  }, [reports, searchStore, itemsToShow, adminData, user]);
 
   /* ================= HANDLERS ================= */
   const validateStore = (s) => /^\d+$/.test(s) && s.length >= 4;
@@ -501,7 +523,9 @@ export default function App() {
 
   const handleLogin = async () => {
     try {
-      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.pass);
+      const res = await signInWithEmailAndPassword(auth, loginForm.email, loginForm.pass);
+      const snap = await getDoc(doc(db, "admins", res.user.uid));
+      if(snap.exists()) setAdminData(snap.data());
       setView("admin");
       showMessage("Access granted");
     } catch (e) { showMessage(e.message, "error"); }
@@ -536,14 +560,12 @@ export default function App() {
     const { jsPDF } = window.jspdf;
     const docP = new jsPDF();
     
-    // Header
     docP.setFillColor(27, 38, 59);
     docP.rect(0, 0, 210, 40, 'F');
     docP.setTextColor(255, 159, 28);
     docP.setFontSize(22);
     docP.text("CKSURE AUDIT", 15, 25);
     
-    // Summary
     docP.setTextColor(0, 0, 0);
     docP.setFontSize(10);
     docP.text(`Store: #${rep.store}`, 15, 50);
@@ -554,7 +576,6 @@ export default function App() {
     docP.setFontSize(14);
     docP.text(`COMPLIANCE SCORE: ${score}%`, 140, 50);
 
-    // Table
     docP.autoTable({
       startY: 70,
       head: [['Requirement', 'Response']],
@@ -758,7 +779,7 @@ export default function App() {
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(350px, 1fr))', gap:'24px'}}>
               <div className="card">
                 <h3>QR Code Generator</h3>
-                <p style={{fontSize:'0.85rem', opacity:0.6, marginBottom:'20px'}}>Generate a store-specific audit link. Scanning the QR will automatically lock the store number in the audit form.</p>
+                <p style={{fontSize:'0.85rem', opacity:0.6, marginBottom:'20px'}}>Generate a store-specific audit link.</p>
                 <div style={{display:'flex', gap:'10px', marginBottom:'20px'}}>
                   <input className="input-field" placeholder="Store #" value={qrStore} onChange={e => setQrStore(e.target.value.replace(/\D/g, ''))} />
                   <button className="nav-btn primary" onClick={generateQR}><QrCode size={18}/> Generate</button>
@@ -791,7 +812,7 @@ export default function App() {
                                 <div style={{fontSize:'0.9rem', fontWeight:600}}>{a.email}</div>
                                 <div style={{fontSize:'0.7rem', color:'var(--accent-cyan)', textTransform:'uppercase'}}>{a.role} {a.assignedStore && `| Store #${a.assignedStore}`}</div>
                             </div>
-                            {a.email !== user.email && <Trash2 size={16} color="var(--danger)" className="cursor-pointer" onClick={() => window.confirm("Delete user?") && deleteDoc(doc(db, "admins", a.id))} />}
+                           {user && a.email !== user.email && <Trash2 size={16} color="var(--danger)" className="cursor-pointer" onClick={() => window.confirm("Delete user?") && deleteDoc(doc(db, "admins", a.id))} />}
                         </div>
                     ))}
                 </div>
@@ -869,7 +890,6 @@ export default function App() {
         <div className="modal-overlay" onClick={() => setSelectedReport(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button style={{position:'absolute', top:'20px', right:'20px', background:'none', border:'none', color:'white', cursor:'pointer'}} onClick={() => setSelectedReport(null)}><X size={24}/></button>
-            
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'start', marginBottom:'30px'}}>
               <div>
                 <h2 style={{margin:0, color:'var(--accent-orange)'}}>Store #{selectedReport.store}</h2>
@@ -880,14 +900,12 @@ export default function App() {
               </div>
               <div style={{textAlign:'right'}}>
                 <div style={{fontSize:'2.5rem', fontWeight:900, color:'var(--accent-cyan)'}}>{Math.round((selectedReport.yesCount/selectedReport.totalQuestions)*100)}%</div>
-                <div style={{fontSize:'0.7rem', fontWeight:800, opacity:0.5}}>TOTAL COMPLIANCE</div>
               </div>
             </div>
-
             <div style={{display:'grid', gap:'12px'}}>
               {Object.entries(selectedReport.answers).map(([q, a], idx) => (
                 <div key={idx} style={{padding:'16px', background:'rgba(255,255,255,0.03)', borderRadius:'16px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid rgba(255,255,255,0.05)'}}>
-                  <span style={{opacity:0.9, fontSize:'0.95rem', flex:1, paddingRight:'20px'}}>{q}</span>
+                  <span style={{opacity:0.9, fontSize:'0.95rem', flex:1}}>{q}</span>
                   <span style={{
                       fontWeight:900, 
                       padding:'6px 14px', 
@@ -898,7 +916,6 @@ export default function App() {
                   }}>{a}</span>
                 </div>
               ))}
-              
               {selectedReport.notes && (
                   <div style={{marginTop:'20px', padding:'25px', background:'rgba(255,159,28,0.1)', borderRadius:'20px', border:'1px dashed var(--accent-orange)'}}>
                       <div style={{display:'flex', gap:'10px', alignItems:'center', color:'var(--accent-orange)', marginBottom:'10px'}}>
@@ -909,14 +926,9 @@ export default function App() {
                   </div>
               )}
             </div>
-
             <div style={{marginTop:'40px', display:'flex', gap:'15px'}}>
-                <button className="nav-btn primary w-full" style={{padding:'18px', justifyContent:'center', fontSize:'1.1rem'}} onClick={() => exportPDF(selectedReport)}>
-                    <Download size={20}/> Download Official PDF
-                </button>
-                <button className="nav-btn w-full" style={{padding:'18px', justifyContent:'center', fontSize:'1.1rem'}} onClick={() => setSelectedReport(null)}>
-                    Close
-                </button>
+                <button className="nav-btn primary w-full" style={{padding:'18px', justifyContent:'center'}} onClick={() => exportPDF(selectedReport)}>Download Official PDF</button>
+                <button className="nav-btn w-full" style={{padding:'18px', justifyContent:'center'}} onClick={() => setSelectedReport(null)}>Close</button>
             </div>
           </div>
         </div>
