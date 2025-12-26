@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import {
   ClipboardCheck, LayoutDashboard, LogIn, LogOut, Loader2, Trash2,
   Eye, X, CircleDot, Download, Lock, Calendar, PlusCircle, Mail,
-  ChevronUp, ChevronDown, CheckCircle2, AlertCircle, ArrowRightLeft, User, ChevronRight, ChevronLeft, BarChart3, ListChecks, ShieldCheck, Timer, TrendingDown, Archive
+  ChevronUp, ChevronDown, CheckCircle2, AlertCircle, ArrowRightLeft, User, ChevronRight, ChevronLeft, BarChart3, ListChecks, ShieldCheck, Timer, TrendingDown, Archive, MessageSquare
 } from "lucide-react";
 
 import { initializeApp } from "firebase/app";
@@ -70,7 +70,7 @@ const CustomStyles = () => (
 
     .bubble {
       background: var(--card); border-radius: 18px; padding: 14px; margin-bottom: 10px;
-      display: flex; align-items: center; gap: 12px; border: 1px solid rgba(255,255,255,0.05);
+      display: flex; flex-direction: column; gap: 12px; border: 1px solid rgba(255,255,255,0.05);
     }
 
     .nav-btn {
@@ -99,11 +99,13 @@ const CustomStyles = () => (
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 15px; }
     .modal-content { background: var(--bg); width: 100%; max-width: 700px; max-height: 85vh; border-radius: 28px; padding: 25px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); }
     .auth-input { width: 100%; background: #0d1b2a; border: 1px solid rgba(255,255,255,0.1); padding: 15px; border-radius: 12px; color: white; margin-bottom: 15px; outline: none; }
+    .details-input { width: 100%; background: rgba(255,77,79,0.05); border: 1px solid rgba(255,77,79,0.2); padding: 10px; border-radius: 8px; color: white; font-size: 12px; outline: none; margin-top: 5px; }
   `}</style>
 );
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [view, setView] = useState("form");
   const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
   const [cooldown, setCooldown] = useState(0);
@@ -115,7 +117,7 @@ export default function App() {
   const [questions, setQuestions] = useState([]);
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
-  const [auditForm, setAuditForm] = useState({ name: "", store: "", answers: {} });
+  const [auditForm, setAuditForm] = useState({ name: "", store: "", answers: {}, details: {} });
   const [newQ, setNewQ] = useState({ text: "", category: "General" });
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -128,7 +130,12 @@ export default function App() {
       await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js");
     };
     init();
-    onAuthStateChanged(auth, u => { setUser(u); setLoading(false); if(u) setView("admin"); });
+    onAuthStateChanged(auth, u => { 
+      setUser(u); 
+      setIsAdmin(u?.email === "muhammad.azeem@circlek.com");
+      setLoading(false); 
+      if(u) setView("admin"); 
+    });
     onSnapshot(query(collection(db, "checklist_questions"), orderBy("order", "asc")), s => setQuestions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, []);
 
@@ -149,7 +156,7 @@ export default function App() {
   };
 
   const handleArchiveCategory = async (catName) => {
-    if (catName === "General") return;
+    if (!isAdmin || catName === "General") return;
     if (!window.confirm(`Move all questions from "${catName}" to "General"?`)) return;
     try {
       const batch = writeBatch(db);
@@ -157,7 +164,7 @@ export default function App() {
       const snapshot = await getDocs(q);
       snapshot.forEach((d) => batch.update(d.ref, { category: "General" }));
       await batch.commit();
-      showMsg("success", "Category Merged to General");
+      showMsg("success", "Category Merged");
     } catch (e) { showMsg("error", "Action Failed"); }
   };
 
@@ -201,10 +208,16 @@ export default function App() {
       docP.setTextColor(0, 255, 156); docP.setFontSize(24); docP.text(`AUDIT REPORT: ${stats.pct}%`, 15, 25);
       docP.setTextColor(255, 255, 255); docP.setFontSize(10);
       docP.text(`Store #${rep.store} | Inspector: ${rep.name} | Date: ${rep.createdAt?.toDate()?.toLocaleDateString()}`, 15, 35);
-      docP.autoTable({ startY: 60, head: [['Audit Item', 'Status']], body: Object.entries(rep.answers).map(([q, a]) => [q, a]), headStyles: { fillColor: [65, 90, 119] } });
+      
+      const body = Object.entries(rep.answers).map(([q, a]) => {
+        const detailText = (a === 'No' && rep.details?.[q]) ? `\nNote: ${rep.details[q]}` : '';
+        return [q, a + detailText];
+      });
+
+      docP.autoTable({ startY: 60, head: [['Audit Item', 'Status']], body: body, headStyles: { fillColor: [65, 90, 119] } });
       docP.save(`Audit_Store_${rep.store}.pdf`);
-      showMsg("success", "PDF Downloaded");
-    } catch (e) { showMsg("error", "PDF Error"); }
+      showMsg("success", "PDF Generated");
+    } catch (e) { showMsg("error", "PDF Export Failed"); }
   };
 
   const submitAudit = async () => {
@@ -212,11 +225,11 @@ export default function App() {
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, "store_checklists"), { ...auditForm, createdAt: serverTimestamp() });
-      showMsg("success", "Audit Synced.");
+      showMsg("success", "Audit Finalized.");
       setCooldown(60);
       setCurrentStep(0);
-      setAuditForm({ name: "", store: "", answers: {} });
-    } catch (err) { showMsg("error", "Sync Error"); }
+      setAuditForm({ name: "", store: "", answers: {}, details: {} });
+    } catch (err) { showMsg("error", "Sync Failure"); }
     finally { setIsSubmitting(false); }
   };
 
@@ -244,9 +257,9 @@ export default function App() {
         <div style={{maxWidth:400, margin:'80px auto', background:'var(--card)', padding:40, borderRadius:30, textAlign:'center', border: '1px solid rgba(255,255,255,0.05)'}}>
           <ShieldCheck size={48} color="var(--warning)" style={{marginBottom:20}}/>
           <h2 style={{marginTop:0, letterSpacing:1}}>SYSTEMS ACCESS</h2>
-          <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, email, password); } catch(err) { showMsg("error", "Invalid Access"); } }}>
+          <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, email, password); } catch(err) { showMsg("error", "Auth Failed"); } }}>
             <input className="auth-input" type="email" placeholder="Corporate ID" onChange={e=>setEmail(e.target.value)} required/>
-            <input className="auth-input" type="password" placeholder="Key Code" onChange={e=>setPassword(e.target.value)} required/>
+            <input className="auth-input" type="password" placeholder="Key Phrase" onChange={e=>setPassword(e.target.value)} required/>
             <button className="nav-btn warning" style={{width:'100%', height:50, justifyContent:'center', fontWeight:800}}>AUTHENTICATE</button>
           </form>
         </div>
@@ -275,12 +288,18 @@ export default function App() {
               {groupedQs[currentStep - 1] && (
                 <div className="category-box"><div className="category-label">{groupedQs[currentStep - 1][0]}</div>
                   {groupedQs[currentStep - 1][1].map(q => (
-                    <div key={q.id} className="bubble"><div style={{flex:1, fontSize:14}}>{q.text}</div>
-                      <div style={{display:'flex', gap:4}}>
-                        {['Yes', 'No', 'N/A'].map(o => (
-                          <button key={o} className="nav-btn" style={{padding:'6px 10px', fontSize:11, background: auditForm.answers[q.text]===o ? (o==='Yes'?'#00ff9c':o==='No'?'#ff4d4f':'#ffd166') : 'rgba(255,255,255,0.05)', color: auditForm.answers[q.text]===o ? '#0b132b' : 'white'}} onClick={()=>setAuditForm({...auditForm, answers: {...auditForm.answers, [q.text]: o}})}>{o}</button>
-                        ))}
+                    <div key={q.id} className="bubble">
+                      <div style={{display:'flex', alignItems:'center', gap:10, width:'100%'}}>
+                        <div style={{flex:1, fontSize:14}}>{q.text}</div>
+                        <div style={{display:'flex', gap:4}}>
+                          {['Yes', 'No', 'N/A'].map(o => (
+                            <button key={o} className="nav-btn" style={{padding:'6px 10px', fontSize:11, background: auditForm.answers[q.text]===o ? (o==='Yes'?'#00ff9c':o==='No'?'#ff4d4f':'#ffd166') : 'rgba(255,255,255,0.05)', color: auditForm.answers[q.text]===o ? '#0b132b' : 'white'}} onClick={()=>setAuditForm({...auditForm, answers: {...auditForm.answers, [q.text]: o}})}>{o}</button>
+                          ))}
+                        </div>
                       </div>
+                      {auditForm.answers[q.text] === 'No' && (
+                        <input className="details-input" placeholder="Work Order # or details..." value={auditForm.details[q.text] || ""} onChange={e => setAuditForm({...auditForm, details: {...auditForm.details, [q.text]: e.target.value}})}/>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -309,25 +328,25 @@ export default function App() {
           </div>
 
           <div style={{display:'flex', gap:10, marginBottom:20}}>
-            <button className={`nav-btn ${activeTab==='analytics'?'active':''}`} onClick={()=>setActiveTab('analytics')}><ListChecks size={18}/> Audit Logs</button>
-            <button className={`nav-btn ${activeTab==='builder'?'active':''}`} onClick={()=>setActiveTab('builder')}><PlusCircle size={18}/> Audit Builder</button>
+            <button className={`nav-btn ${activeTab==='analytics'?'active':''}`} onClick={()=>setActiveTab('analytics')}><ListChecks size={18}/> Audit History</button>
+            {isAdmin && <button className={`nav-btn ${activeTab==='builder'?'active':''}`} onClick={()=>setActiveTab('builder')}><PlusCircle size={18}/> Audit Builder</button>}
           </div>
 
           {activeTab === 'analytics' && (
             <div style={{display:'grid', gridTemplateColumns: window.innerWidth > 900 ? '1fr 320px' : '1fr', gap:20}}>
               <div>
                 {reports.map(r => (
-                  <div key={r.id} className="bubble" style={{justifyContent:'space-between'}}>
+                  <div key={r.id} className="bubble" style={{justifyContent:'space-between', flexDirection:'row'}}>
                     <div><b>Store #{r.store}</b><br/><small style={{opacity:0.5}}>{r.createdAt?.toDate()?.toLocaleDateString()} - {calcSingleScore(r.answers).pct}%</small></div>
                     <div style={{display:'flex', gap:8}}>
                       <button className="nav-btn warning" onClick={()=>setSelectedReport(r)}><Eye size={16}/></button>
                       <button className="nav-btn" style={{background:'rgba(255,255,255,0.1)'}} onClick={()=>exportPDF(r)}><Download size={16}/></button>
-                      <button className="nav-btn danger" onClick={()=>deleteDoc(doc(db,"store_checklists",r.id))}><Trash2 size={16}/></button>
+                      {isAdmin && <button className="nav-btn danger" onClick={()=>deleteDoc(doc(db,"store_checklists",r.id))}><Trash2 size={16}/></button>}
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="category-box"><div className="category-label" style={{background:'var(--danger)', color:'#000'}}>High Risk</div>
+              <div className="category-box"><div className="category-label" style={{background:'var(--danger)', color:'#000'}}>High Risk Items</div>
                 {analytics.issues.map(([q, c]) => (
                   <div key={q} style={{padding:12, background:'rgba(255,77,79,0.1)', borderRadius:14, marginBottom:10, fontSize:12, borderLeft:'4px solid var(--danger)'}}>
                     <div style={{fontWeight:700, marginBottom:4}}>{q}</div>
@@ -338,12 +357,12 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'builder' && (
+          {activeTab === 'builder' && isAdmin && (
             <div>
               <div className="category-box"><div className="category-label">Add Audit Bubble</div>
                 <input className="auth-input" placeholder="Bubble Text" value={newQ.text} onChange={e=>setNewQ({...newQ, text:e.target.value})}/>
                 <input className="auth-input" placeholder="Bubble Category" value={newQ.category} onChange={e=>setNewQ({...newQ, category:e.target.value})}/>
-                <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>{addDoc(collection(db,"checklist_questions"),{...newQ, order: questions.length}); setNewQ({text:"", category:"General"}); showMsg("success", "Added");}}>SYNC TO FLOW</button>
+                <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>{addDoc(collection(db,"checklist_questions"),{...newQ, order: questions.length}); setNewQ({text:"", category:"General"}); showMsg("success", "Bubble Added");}}>SYNC TO FLOW</button>
               </div>
               {groupedQs.map(([cat, qs]) => (
                 <div key={cat} className="category-box">
@@ -352,7 +371,7 @@ export default function App() {
                     {cat !== "General" && <Archive size={12} style={{cursor:'pointer', marginLeft: 10}} onClick={() => handleArchiveCategory(cat)}/>}
                   </div>
                   {qs.map((q) => (
-                    <div key={q.id} className="bubble">
+                    <div key={q.id} className="bubble" style={{flexDirection:'row'}}>
                       <div style={{flex:1}}><div style={{fontSize:14}}>{q.text}</div>
                         <select className="auth-input" style={{fontSize:11, padding:4, marginTop:8, height:30}} value={q.category || "General"} onChange={(e)=>updateDoc(doc(db, "checklist_questions", q.id), { category: e.target.value })}>
                           {[...new Set(questions.map(x=>x.category || "General"))].map(c => <option key={c} value={c}>{c}</option>)}
@@ -373,7 +392,7 @@ export default function App() {
           <div className="modal-content" onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20}}>
               <div>
-                <h2 style={{margin:0, color:'var(--warning)'}}>Audit View: #{selectedReport.store}</h2>
+                <h2 style={{margin:0, color:'var(--warning)'}}>Audit View: Store #{selectedReport.store}</h2>
                 <div style={{display:'flex', gap:10, fontSize:12, marginTop:5, opacity:0.6}}><User size={12}/> {selectedReport.name} | <Calendar size={12}/> {selectedReport.createdAt?.toDate()?.toLocaleDateString()}</div>
               </div>
               <X onClick={()=>setSelectedReport(null)} style={{cursor:'pointer'}}/>
@@ -387,9 +406,16 @@ export default function App() {
 
             <div style={{display:'grid', gap:8}}>
               {Object.entries(selectedReport.answers).map(([q, a]) => (
-                <div key={q} className="bubble" style={{justifyContent:'space-between', padding:'10px 14px', background:'rgba(255,255,255,0.02)'}}>
-                  <span style={{fontSize:13, flex:1, paddingRight:15}}>{q}</span>
-                  <span style={{padding:'4px 12px', borderRadius:8, fontSize:10, fontWeight:800, background: a==='Yes'?'var(--success)':a==='No'?'var(--danger)':'var(--warning)', color:'#0d1b2a'}}>{a}</span>
+                <div key={q} className="bubble" style={{padding:'10px 14px', background:'rgba(255,255,255,0.02)'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', width:'100%'}}>
+                    <span style={{fontSize:13, flex:1, paddingRight:15}}>{q}</span>
+                    <span style={{padding:'4px 12px', borderRadius:8, fontSize:10, fontWeight:800, background: a==='Yes'?'var(--success)':a==='No'?'var(--danger)':'var(--warning)', color:'#0d1b2a'}}>{a}</span>
+                  </div>
+                  {a === 'No' && selectedReport.details?.[q] && (
+                    <div style={{fontSize:11, color:'var(--warning)', display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.05)', padding:8, borderRadius:8}}>
+                      <MessageSquare size={12}/> {selectedReport.details[q]}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
