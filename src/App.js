@@ -158,7 +158,7 @@ export default function App() {
       snapshot.forEach((d) => batch.update(d.ref, { category: "General" }));
       await batch.commit();
       showMsg("success", "Category Merged to General");
-    } catch (e) { showMsg("error", "Consolidation Failed"); }
+    } catch (e) { showMsg("error", "Action Failed"); }
   };
 
   const calcSingleScore = (answers) => {
@@ -203,8 +203,8 @@ export default function App() {
       docP.text(`Store #${rep.store} | Inspector: ${rep.name} | Date: ${rep.createdAt?.toDate()?.toLocaleDateString()}`, 15, 35);
       docP.autoTable({ startY: 60, head: [['Audit Item', 'Status']], body: Object.entries(rep.answers).map(([q, a]) => [q, a]), headStyles: { fillColor: [65, 90, 119] } });
       docP.save(`Audit_Store_${rep.store}.pdf`);
-      showMsg("success", "PDF Saved");
-    } catch (e) { showMsg("error", "PDF Generation Failed"); }
+      showMsg("success", "PDF Downloaded");
+    } catch (e) { showMsg("error", "PDF Error"); }
   };
 
   const submitAudit = async () => {
@@ -212,11 +212,11 @@ export default function App() {
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, "store_checklists"), { ...auditForm, createdAt: serverTimestamp() });
-      showMsg("success", "Sync Complete.");
+      showMsg("success", "Audit Synced.");
       setCooldown(60);
       setCurrentStep(0);
       setAuditForm({ name: "", store: "", answers: {} });
-    } catch (err) { showMsg("error", "Sync Failure"); }
+    } catch (err) { showMsg("error", "Sync Error"); }
     finally { setIsSubmitting(false); }
   };
 
@@ -244,9 +244,9 @@ export default function App() {
         <div style={{maxWidth:400, margin:'80px auto', background:'var(--card)', padding:40, borderRadius:30, textAlign:'center', border: '1px solid rgba(255,255,255,0.05)'}}>
           <ShieldCheck size={48} color="var(--warning)" style={{marginBottom:20}}/>
           <h2 style={{marginTop:0, letterSpacing:1}}>SYSTEMS ACCESS</h2>
-          <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, email, password); } catch(err) { showMsg("error", "Access Denied"); } }}>
-            <input className="auth-input" type="email" placeholder="Corporate Email" onChange={e=>setEmail(e.target.value)} required/>
-            <input className="auth-input" type="password" placeholder="Key Phrase" onChange={e=>setPassword(e.target.value)} required/>
+          <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, email, password); } catch(err) { showMsg("error", "Invalid Access"); } }}>
+            <input className="auth-input" type="email" placeholder="Corporate ID" onChange={e=>setEmail(e.target.value)} required/>
+            <input className="auth-input" type="password" placeholder="Key Code" onChange={e=>setPassword(e.target.value)} required/>
             <button className="nav-btn warning" style={{width:'100%', height:50, justifyContent:'center', fontWeight:800}}>AUTHENTICATE</button>
           </form>
         </div>
@@ -263,7 +263,7 @@ export default function App() {
               <div className="category-box"><div className="category-label">Registration</div>
                 <input className="auth-input" placeholder="Inspector Name" value={auditForm.name} onChange={e=>setAuditForm({...auditForm, name: e.target.value})}/>
                 <input className="auth-input" placeholder="Store ID" value={auditForm.store} onChange={e=>setAuditForm({...auditForm, store: e.target.value})}/>
-                <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>setCurrentStep(1)}>INITIATE AUDIT</button>
+                <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>setCurrentStep(1)}>START SESSION</button>
               </div>
               <div className="contact-card">
                 <Mail size={16} color="var(--warning)" />
@@ -291,7 +291,7 @@ export default function App() {
                   <button className="nav-btn warning" style={{flex:1, justifyContent:'center'}} onClick={()=>setCurrentStep(currentStep + 1)}>NEXT <ChevronRight size={18}/></button>
                 ) : (
                   <button className="nav-btn active" style={{flex:1, justifyContent:'center'}} onClick={submitAudit} disabled={cooldown > 0 || isSubmitting}>
-                    {cooldown > 0 ? <><Timer size={16}/> {cooldown}s LOCK</> : isSubmitting ? "SYNCING..." : "COMPLETE"}
+                    {cooldown > 0 ? <><Timer size={16}/> {cooldown}s LOCK</> : isSubmitting ? "SYNCING..." : "FINISH"}
                   </button>
                 )}
               </div>
@@ -303,14 +303,14 @@ export default function App() {
       {view === 'admin' && user && (
         <div>
           <div className="stats-grid">
-            <div className="stat-card"><small>CORP AVERAGE</small><div style={{fontSize:24, fontWeight:800, color:'var(--success)'}}>{analytics.score}%</div></div>
-            <div className="stat-card warn"><small>TOP PERFORMANCE</small><div style={{fontSize:18, fontWeight:800}}>{analytics.top.id} ({analytics.top.avg}%)</div></div>
-            <div className="stat-card warn"><small>TOTAL LOGS</small><div style={{fontSize:24, fontWeight:800}}>{reports.length}</div></div>
+            <div className="stat-card"><small>CORP AVG</small><div style={{fontSize:24, fontWeight:800, color:'var(--success)'}}>{analytics.score}%</div></div>
+            <div className="stat-card warn"><small>LEADERBOARD</small><div style={{fontSize:18, fontWeight:800}}>{analytics.top.id} ({analytics.top.avg}%)</div></div>
+            <div className="stat-card warn"><small>SESSIONS</small><div style={{fontSize:24, fontWeight:800}}>{reports.length}</div></div>
           </div>
 
           <div style={{display:'flex', gap:10, marginBottom:20}}>
-            <button className={`nav-btn ${activeTab==='analytics'?'active':''}`} onClick={()=>setActiveTab('analytics')}><ListChecks size={18}/> History</button>
-            <button className={`nav-btn ${activeTab==='builder'?'active':''}`} onClick={()=>setActiveTab('builder')}><PlusCircle size={18}/> Systems Builder</button>
+            <button className={`nav-btn ${activeTab==='analytics'?'active':''}`} onClick={()=>setActiveTab('analytics')}><ListChecks size={18}/> Audit Logs</button>
+            <button className={`nav-btn ${activeTab==='builder'?'active':''}`} onClick={()=>setActiveTab('builder')}><PlusCircle size={18}/> Audit Builder</button>
           </div>
 
           {activeTab === 'analytics' && (
@@ -327,11 +327,11 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              <div className="category-box"><div className="category-label" style={{background:'var(--danger)', color:'#000'}}>System Critical</div>
+              <div className="category-box"><div className="category-label" style={{background:'var(--danger)', color:'#000'}}>High Risk</div>
                 {analytics.issues.map(([q, c]) => (
                   <div key={q} style={{padding:12, background:'rgba(255,77,79,0.1)', borderRadius:14, marginBottom:10, fontSize:12, borderLeft:'4px solid var(--danger)'}}>
                     <div style={{fontWeight:700, marginBottom:4}}>{q}</div>
-                    <b style={{color:'var(--danger)', display:'flex', alignItems:'center', gap:4}}><TrendingDown size={14}/> {c} DETECTED FAILS</b>
+                    <b style={{color:'var(--danger)', display:'flex', alignItems:'center', gap:4}}><TrendingDown size={14}/> {c} FAILS RECORDED</b>
                   </div>
                 ))}
               </div>
@@ -340,10 +340,10 @@ export default function App() {
 
           {activeTab === 'builder' && (
             <div>
-              <div className="category-box"><div className="category-label">Create Bubble</div>
-                <input className="auth-input" placeholder="Question Title" value={newQ.text} onChange={e=>setNewQ({...newQ, text:e.target.value})}/>
-                <input className="auth-input" placeholder="Categorization" value={newQ.category} onChange={e=>setNewQ({...newQ, category:e.target.value})}/>
-                <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>{addDoc(collection(db,"checklist_questions"),{...newQ, order: questions.length}); setNewQ({text:"", category:"General"}); showMsg("success", "Bubble Added");}}>SYNC BUBBLE</button>
+              <div className="category-box"><div className="category-label">Add Audit Bubble</div>
+                <input className="auth-input" placeholder="Bubble Text" value={newQ.text} onChange={e=>setNewQ({...newQ, text:e.target.value})}/>
+                <input className="auth-input" placeholder="Bubble Category" value={newQ.category} onChange={e=>setNewQ({...newQ, category:e.target.value})}/>
+                <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>{addDoc(collection(db,"checklist_questions"),{...newQ, order: questions.length}); setNewQ({text:"", category:"General"}); showMsg("success", "Added");}}>SYNC TO FLOW</button>
               </div>
               {groupedQs.map(([cat, qs]) => (
                 <div key={cat} className="category-box">
@@ -373,7 +373,7 @@ export default function App() {
           <div className="modal-content" onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20}}>
               <div>
-                <h2 style={{margin:0, color:'var(--warning)'}}>Audit Log: Store #{selectedReport.store}</h2>
+                <h2 style={{margin:0, color:'var(--warning)'}}>Audit View: #{selectedReport.store}</h2>
                 <div style={{display:'flex', gap:10, fontSize:12, marginTop:5, opacity:0.6}}><User size={12}/> {selectedReport.name} | <Calendar size={12}/> {selectedReport.createdAt?.toDate()?.toLocaleDateString()}</div>
               </div>
               <X onClick={()=>setSelectedReport(null)} style={{cursor:'pointer'}}/>
