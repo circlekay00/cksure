@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import {
   ClipboardCheck, LayoutDashboard, LogIn, LogOut, Loader2, Trash2,
   Eye, X, CircleDot, Download, Lock, Calendar, PlusCircle,
-  ChevronUp, ChevronDown, CheckCircle2, AlertCircle, ArrowRightLeft, User, ChevronRight, ChevronLeft, BarChart3, ListChecks
+  ChevronUp, ChevronDown, CheckCircle2, AlertCircle, ArrowRightLeft, User, ChevronRight, ChevronLeft, BarChart3, ListChecks, ShieldCheck
 } from "lucide-react";
 
 import { initializeApp } from "firebase/app";
@@ -47,6 +47,18 @@ const CustomStyles = () => (
       border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1); position: sticky; top: 10px; z-index: 1000;
     }
 
+    /* AUTH SCREEN */
+    .auth-card {
+      max-width: 400px; margin: 80px auto; background: var(--card); padding: 40px; 
+      border-radius: 30px; border: 1px solid rgba(255, 255, 255, 0.1); text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+    .auth-input {
+      width: 100%; background: #0d1b2a; border: 1px solid rgba(255,255,255,0.1);
+      padding: 15px; border-radius: 12px; color: white; margin-bottom: 15px; outline: none;
+    }
+    .auth-input:focus { border-color: var(--warning); }
+
     .step-bar { display: flex; gap: 6px; margin-bottom: 20px; }
     .step-dot { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); }
     .step-dot.active { background: var(--warning); box-shadow: 0 0 10px var(--warning); }
@@ -74,24 +86,25 @@ const CustomStyles = () => (
     .nav-btn {
       padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
       background: var(--accent-blue); color: white; cursor: pointer; font-weight: 600;
-      display: flex; align-items: center; gap: 8px; font-size: 14px;
+      display: flex; align-items: center; gap: 8px; font-size: 14px; border: none;
     }
     .nav-btn.active { background: var(--success); color: #0d1b2a; }
     .nav-btn.warning { background: var(--warning); color: #0d1b2a; }
-    .nav-btn.primary { background: var(--success); color: #0d1b2a; border: none; font-weight: 800; }
+    .nav-btn.primary { background: var(--success); color: #0d1b2a; font-weight: 800; }
 
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 15px; }
     .modal-content { background: var(--bg); width: 100%; max-width: 700px; max-height: 85vh; border-radius: 28px; padding: 25px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); }
     
     .detail-pill { background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; min-width: 80px; }
     .detail-pill b { font-size: 16px; color: var(--success); }
-    .detail-pill small { font-size: 9px; text-transform: uppercase; opacity: 0.6; }
   `}</style>
 );
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("form");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [activeTab, setActiveTab] = useState("analytics");
   const [loading, setLoading] = useState(true);
   const [questions, setQuestions] = useState([]);
@@ -110,13 +123,28 @@ export default function App() {
       await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js");
     };
     init();
-    onAuthStateChanged(auth, u => { setUser(u); setLoading(false); });
+    onAuthStateChanged(auth, u => { 
+        setUser(u); 
+        setLoading(false); 
+        if(u) setView("admin");
+    });
     onSnapshot(query(collection(db, "checklist_questions"), orderBy("order", "asc")), s => setQuestions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, []);
 
   useEffect(() => {
     if (user) onSnapshot(query(collection(db, "store_checklists"), orderBy("createdAt", "desc")), s => setReports(s.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, [user]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    try { await signInWithEmailAndPassword(auth, email, password); }
+    catch (err) { alert("Invalid Credentials"); }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setView("login");
+  };
 
   const groupedQs = useMemo(() => {
     const groups = questions.reduce((acc, q) => {
@@ -132,10 +160,7 @@ export default function App() {
     const vals = Object.values(answers);
     const yes = vals.filter(v => v === "Yes").length;
     const scorable = vals.filter(v => v !== "N/A").length;
-    return { 
-      pct: scorable > 0 ? Math.round((yes / scorable) * 100) : 0,
-      yes, scorable, no: vals.filter(v => v === "No").length
-    };
+    return { pct: scorable > 0 ? Math.round((yes / scorable) * 100) : 0, yes, scorable, no: vals.filter(v => v === "No").length };
   };
 
   const analytics = useMemo(() => {
@@ -157,28 +182,13 @@ export default function App() {
       const { jsPDF } = window.jspdf;
       const docP = new jsPDF();
       const stats = calcSingleScore(rep.answers);
-      
       docP.setFillColor(13, 27, 42); docP.rect(0, 0, 210, 50, 'F');
       docP.setTextColor(0, 255, 156); docP.setFontSize(24); docP.text(`AUDIT REPORT: ${stats.pct}%`, 15, 25);
       docP.setTextColor(255, 255, 255); docP.setFontSize(10);
       docP.text(`Store #${rep.store} | Inspector: ${rep.name}`, 15, 35);
-      docP.text(`Date: ${rep.createdAt?.toDate()?.toLocaleString()}`, 15, 42);
-
-      const tableData = Object.entries(rep.answers).map(([q, a]) => [q, a]);
-      docP.autoTable({
-        startY: 60,
-        head: [['Compliance Item', 'Status']],
-        body: tableData,
-        headStyles: { fillColor: [65, 90, 119], textColor: [255, 255, 255] },
-        didParseCell: (data) => {
-          if (data.section === 'body' && data.column.index === 1) {
-            if (data.cell.raw === 'No') data.cell.styles.textColor = [255, 77, 79];
-            if (data.cell.raw === 'Yes') data.cell.styles.textColor = [0, 255, 156];
-          }
-        }
-      });
-      docP.save(`Audit_Store_${rep.store}.pdf`);
-    } catch (e) { alert("PDF Error. Try again."); }
+      docP.autoTable({ startY: 60, head: [['Compliance Item', 'Status']], body: Object.entries(rep.answers).map(([q, a]) => [q, a]) });
+      docP.save(`Audit_${rep.store}.pdf`);
+    } catch (e) { console.error(e); }
   };
 
   if (loading) return <div style={{height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg)'}}><Loader2 className="animate-spin" color="#ffd166"/></div>;
@@ -191,9 +201,21 @@ export default function App() {
         <div style={{display:'flex', gap:8}}>
           <button className={`nav-btn ${view==='form'?'active':''}`} onClick={()=>setView('form')}><ClipboardCheck size={18}/></button>
           {user && <button className={`nav-btn ${view==='admin'?'active':''}`} onClick={()=>setView('admin')}><LayoutDashboard size={18}/></button>}
-          {!user ? <button className="nav-btn" onClick={()=>setView('login')}><LogIn size={18}/></button> : <button className="nav-btn" onClick={()=>signOut(auth)}><LogOut size={18}/></button>}
+          {!user ? <button className="nav-btn" onClick={()=>setView('login')}><LogIn size={18}/></button> : <button className="nav-btn" onClick={handleLogout}><LogOut size={18}/></button>}
         </div>
       </header>
+
+      {view === 'login' && !user && (
+        <div className="auth-card">
+          <ShieldCheck size={48} color="var(--warning)" style={{marginBottom:20}}/>
+          <h2>Inspector Login</h2>
+          <form onSubmit={handleLogin}>
+            <input className="auth-input" type="email" placeholder="Email Address" onChange={e=>setEmail(e.target.value)} required/>
+            <input className="auth-input" type="password" placeholder="Access Key" onChange={e=>setPassword(e.target.value)} required/>
+            <button className="nav-btn warning" style={{width:'100%', height:50, justifyContent:'center'}}>AUTHENTICATE</button>
+          </form>
+        </div>
+      )}
 
       {view === 'form' && (
         <div style={{maxWidth:600, margin:'0 auto'}}>
@@ -201,12 +223,11 @@ export default function App() {
             <div className={`step-dot ${currentStep === 0 ? 'active' : 'completed'}`}></div>
             {groupedQs.map((_, i) => <div key={i} className={`step-dot ${currentStep === i + 1 ? 'active' : currentStep > i + 1 ? 'completed' : ''}`}></div>)}
           </div>
-
           {currentStep === 0 ? (
             <div className="category-box"><div className="category-label">Initial Entry</div>
-              <input className="nav-btn" style={{width:'100%', marginBottom:10, background:'rgba(0,0,0,0.3)', textAlign:'left'}} placeholder="Inspector Name" onChange={e=>setAuditForm({...auditForm, name: e.target.value})}/>
-              <input className="nav-btn" style={{width:'100%', background:'rgba(0,0,0,0.3)', textAlign:'left'}} placeholder="Store Number" onChange={e=>setAuditForm({...auditForm, store: e.target.value})}/>
-              <button className="nav-btn warning" style={{width:'100%', marginTop:20, justifyContent:'center'}} onClick={()=>setCurrentStep(1)}>BEGIN INSPECTION <ChevronRight size={18}/></button>
+              <input className="auth-input" placeholder="Inspector Name" onChange={e=>setAuditForm({...auditForm, name: e.target.value})}/>
+              <input className="auth-input" placeholder="Store Number" onChange={e=>setAuditForm({...auditForm, store: e.target.value})}/>
+              <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>setCurrentStep(1)}>PROCEED</button>
             </div>
           ) : (
             <div>
@@ -224,11 +245,11 @@ export default function App() {
                 </div>
               )}
               <div style={{display:'flex', gap:10}}>
-                <button className="nav-btn" style={{flex:1, justifyContent:'center'}} onClick={()=>setCurrentStep(currentStep - 1)}><ChevronLeft size={18}/> PREVIOUS</button>
+                <button className="nav-btn" style={{flex:1, justifyContent:'center'}} onClick={()=>setCurrentStep(currentStep - 1)}><ChevronLeft size={18}/> BACK</button>
                 {currentStep < groupedQs.length ? (
-                  <button className="nav-btn warning" style={{flex:1, justifyContent:'center'}} onClick={()=>setCurrentStep(currentStep + 1)}>NEXT <ChevronRight size={18}/></button>
+                  <button className="nav-btn warning" style={{flex:1, justifyContent:'center'}} onClick={()=>setCurrentStep(currentStep + 1)}>NEXT</button>
                 ) : (
-                  <button className="nav-btn active" style={{flex:1, justifyContent:'center'}} onClick={()=>{addDoc(collection(db,"store_checklists"), {...auditForm, createdAt: serverTimestamp()}); alert("Audit Complete!"); setCurrentStep(0); setView('admin');}}>SUBMIT ALL</button>
+                  <button className="nav-btn active" style={{flex:1, justifyContent:'center'}} onClick={()=>{addDoc(collection(db,"store_checklists"), {...auditForm, createdAt: serverTimestamp()}); alert("Submitted!"); setView("admin");}}>FINISH</button>
                 )}
               </div>
             </div>
@@ -236,18 +257,18 @@ export default function App() {
         </div>
       )}
 
-      {view === 'admin' && (
+      {view === 'admin' && user && (
         <div>
           <div className="stats-grid">
             <div className="stat-card"><small>SYSTEM AVG</small><div style={{fontSize:24, fontWeight:800, color:'var(--success)'}}>{analytics.score}%</div></div>
             <div className="stat-card warn"><small>TOP STORE</small><div style={{fontSize:20, fontWeight:800, color:'var(--warning)'}}>#{analytics.top.id}</div></div>
             <div className="stat-card"><small>LOW STORE</small><div style={{fontSize:20, fontWeight:800, color:'var(--danger)'}}>#{analytics.low.id}</div></div>
-            <div className="stat-card warn"><small>DATABASE</small><div style={{fontSize:24, fontWeight:800, color:'var(--warning)'}}>{reports.length}</div></div>
+            <div className="stat-card warn"><small>LOGS</small><div style={{fontSize:24, fontWeight:800, color:'var(--warning)'}}>{reports.length}</div></div>
           </div>
 
           <div style={{display:'flex', gap:10, marginBottom:20}}>
-            <button className={`nav-btn ${activeTab==='analytics'?'active':''}`} onClick={()=>setActiveTab('analytics')}>Inspection Logs</button>
-            <button className={`nav-btn ${activeTab==='builder'?'active':''}`} onClick={()=>setActiveTab('builder')}>Box Builder</button>
+            <button className={`nav-btn ${activeTab==='analytics'?'active':''}`} onClick={()=>setActiveTab('analytics')}>Logs</button>
+            <button className={`nav-btn ${activeTab==='builder'?'active':''}`} onClick={()=>setActiveTab('builder')}>Builder</button>
           </div>
 
           {activeTab === 'analytics' && (
@@ -263,9 +284,9 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              <div className="category-box"><div className="category-label" style={{background:'var(--danger)', color:'white'}}>High Risk Items</div>
+              <div className="category-box"><div className="category-label" style={{background:'var(--danger)', color:'white'}}>Risk Alerts</div>
                 {analytics.issues.map(([q, c]) => (
-                  <div key={q} style={{padding:10, background:'rgba(255,77,79,0.1)', borderRadius:12, marginBottom:8, fontSize:12, borderLeft:'4px solid var(--danger)'}}>{q}<br/><b style={{color:'var(--danger)'}}>{c} CRITICAL FAILS</b></div>
+                  <div key={q} style={{padding:10, background:'rgba(255,77,79,0.1)', borderRadius:12, marginBottom:8, fontSize:12, borderLeft:'4px solid var(--danger)'}}>{q}<br/><b style={{color:'var(--danger)'}}>{c} FAILS</b></div>
                 ))}
               </div>
             </div>
@@ -273,10 +294,10 @@ export default function App() {
 
           {activeTab === 'builder' && (
             <div>
-              <div className="category-box"><div className="category-label">Bubble Creation</div>
-                <input className="nav-btn" style={{width:'100%', marginBottom:8, background:'var(--bg)', textAlign:'left'}} placeholder="Question Text" value={newQ.text} onChange={e=>setNewQ({...newQ, text:e.target.value})}/>
-                <input className="nav-btn" style={{width:'100%', marginBottom:10, background:'var(--bg)', textAlign:'left'}} placeholder="Category Box Name" value={newQ.category} onChange={e=>setNewQ({...newQ, category:e.target.value})}/>
-                <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>{addDoc(collection(db,"checklist_questions"),{...newQ, order: questions.length}); setNewQ({text:"", category:"General"});}}>ADD TO SYSTEM</button>
+              <div className="category-box"><div className="category-label">System Builder</div>
+                <input className="auth-input" placeholder="Question Text" value={newQ.text} onChange={e=>setNewQ({...newQ, text:e.target.value})}/>
+                <input className="auth-input" placeholder="Category" value={newQ.category} onChange={e=>setNewQ({...newQ, category:e.target.value})}/>
+                <button className="nav-btn warning" style={{width:'100%', justifyContent:'center'}} onClick={()=>{addDoc(collection(db,"checklist_questions"),{...newQ, order: questions.length}); setNewQ({text:"", category:"General"});}}>ADD BUBBLE</button>
               </div>
               {groupedQs.map(([cat, qs]) => (
                 <div key={cat} className="category-box"><div className="category-label">{cat}</div>
@@ -300,34 +321,25 @@ export default function App() {
       {selectedReport && (
         <div className="modal-overlay" onClick={()=>setSelectedReport(null)}>
           <div className="modal-content" onClick={e=>e.stopPropagation()}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20}}>
+            <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
               <div>
-                <h2 style={{margin:0, color:'var(--warning)'}}>Audit Details #{selectedReport.store}</h2>
-                <div style={{display:'flex', gap:10, fontSize:12, marginTop:5, opacity:0.8}}>
-                    <span style={{display:'flex', alignItems:'center', gap:4}}><User size={12}/> {selectedReport.name}</span>
-                    <span style={{display:'flex', alignItems:'center', gap:4}}><Calendar size={12}/> {selectedReport.createdAt?.toDate()?.toLocaleDateString()}</span>
-                </div>
+                <h2 style={{margin:0, color:'var(--warning)'}}>Audit #{selectedReport.store}</h2>
+                <div style={{display:'flex', gap:10, fontSize:12, marginTop:5, opacity:0.8}}><User size={12}/> {selectedReport.name}</div>
               </div>
               <X onClick={()=>setSelectedReport(null)} style={{cursor:'pointer'}}/>
             </div>
-
             <div style={{display:'flex', gap:10, marginBottom:20, justifyContent:'center'}}>
               <div className="detail-pill"><b>{calcSingleScore(selectedReport.answers).pct}%</b><small>Score</small></div>
-              <div className="detail-pill"><b>{calcSingleScore(selectedReport.answers).yes}</b><small>Passed</small></div>
-              <div className="detail-pill" style={{borderColor:'var(--danger)'}}><b style={{color:'var(--danger)'}}>{calcSingleScore(selectedReport.answers).no}</b><small>Failed</small></div>
-              <div className="detail-pill"><b style={{color:'var(--accent-cyan)'}}>{calcSingleScore(selectedReport.answers).scorable}</b><small>Total</small></div>
+              <div className="detail-pill"><b>{calcSingleScore(selectedReport.answers).yes}</b><small>Pass</small></div>
+              <div className="detail-pill" style={{borderColor:'var(--danger)'}}><b style={{color:'var(--danger)'}}>{calcSingleScore(selectedReport.answers).no}</b><small>Fail</small></div>
             </div>
-
-            <div style={{display:'grid', gap:8}}>
-              {Object.entries(selectedReport.answers).map(([q, a]) => (
-                <div key={q} className="bubble" style={{justifyContent:'space-between', background:'rgba(255,255,255,0.02)', padding:'10px 14px'}}>
-                  <span style={{fontSize:13, flex:1, paddingRight:10}}>{q}</span>
-                  <span style={{padding:'4px 10px', borderRadius:6, fontSize:10, fontWeight:800, background: a==='Yes'?'var(--success)':a==='No'?'var(--danger)':'var(--warning)', color:'#0d1b2a'}}>{a}</span>
-                </div>
-              ))}
-            </div>
-            
-            <button className="nav-btn primary" style={{width:'100%', marginTop:25, height:50}} onClick={()=>exportPDF(selectedReport)}><Download size={18}/> EXPORT DETAILED PDF</button>
+            {Object.entries(selectedReport.answers).map(([q, a]) => (
+              <div key={q} className="bubble" style={{justifyContent:'space-between'}}>
+                <span style={{fontSize:13, flex:1, paddingRight:10}}>{q}</span>
+                <span style={{padding:'4px 10px', borderRadius:6, fontSize:10, fontWeight:800, background: a==='Yes'?'var(--success)':a==='No'?'var(--danger)':'var(--warning)', color:'#0d1b2a'}}>{a}</span>
+              </div>
+            ))}
+            <button className="nav-btn primary" style={{width:'100%', marginTop:25, height:50}} onClick={()=>exportPDF(selectedReport)}><Download size={18}/> PDF EXPORT</button>
           </div>
         </div>
       )}
